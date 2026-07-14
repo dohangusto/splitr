@@ -2,16 +2,83 @@
 //  splitrApp.swift
 //  splitr
 //
-//  Created by Ivandohan Samuel Siregar on 13/07/26.
-//
 
+import CloudKit
 import SwiftUI
+import SplitBillSync
+
+/// Composition root: one place decides which `RoomStoring` the app runs on.
+/// Simulator → mock store with demo rooms (no iCloud account needed);
+/// device → CloudKit-backed store. Previews construct `MockRoomStore`
+/// directly.
+@MainActor
+enum AppComposition {
+    static let store: any RoomStoring = {
+        #if targetEnvironment(simulator)
+        MockRoomStore(rooms: MockData.rooms())
+        #else
+        CloudKitRoomStore()
+        #endif
+    }()
+
+    /// The CloudKit store when active — push + share entry points need it.
+    static var cloudStore: CloudKitRoomStore? {
+        store as? CloudKitRoomStore
+    }
+}
 
 @main
 struct splitrApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RoomListView(store: AppComposition.store)
+        }
+    }
+}
+
+/// Registers for CloudKit silent pushes and routes CKShare acceptance.
+final class AppDelegate: NSObject, UIApplicationDelegate {
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        application.registerForRemoteNotifications()
+        return true
+    }
+
+    func application(
+        _ application: UIApplication,
+        didReceiveRemoteNotification userInfo: [AnyHashable: Any]
+    ) async -> UIBackgroundFetchResult {
+        guard let store = await AppComposition.cloudStore else { return .noData }
+        let fetched = await store.handleRemoteNotification(userInfo: userInfo)
+        return fetched ? .newData : .noData
+    }
+
+    func application(
+        _ application: UIApplication,
+        configurationForConnecting connectingSceneSession: UISceneSession,
+        options: UIScene.ConnectionOptions
+    ) -> UISceneConfiguration {
+        let configuration = UISceneConfiguration(
+            name: nil,
+            sessionRole: connectingSceneSession.role
+        )
+        configuration.delegateClass = SceneDelegate.self
+        return configuration
+    }
+}
+
+/// Member taps a share link → the system hands us CKShare metadata here.
+final class SceneDelegate: NSObject, UIWindowSceneDelegate {
+    func windowScene(
+        _ windowScene: UIWindowScene,
+        userDidAcceptCloudKitShareWith cloudKitShareMetadata: CKShare.Metadata
+    ) {
+        Task { @MainActor in
+            await AppComposition.cloudStore?.acceptShare(metadata: cloudKitShareMetadata)
         }
     }
 }

@@ -6,15 +6,13 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		34D845903005430000731F4F /* SplitBillCore in Frameworks */ = {isa = PBXBuildFile; productRef = 34D845913005430000731F4F /* SplitBillCore */; };
+		34D845963005430000731F4F /* SplitBillSync in Frameworks */ = {isa = PBXBuildFile; productRef = 34D845953005430000731F4F /* SplitBillSync */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		34D845673005421700731F4F /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 34D845513005421600731F4F /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 34D845583005421600731F4F;
-			remoteInfo = splitr;
-		};
-		34D845713005421700731F4F /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 34D845513005421600731F4F /* Project object */;
 			proxyType = 1;
@@ -26,23 +24,30 @@
 /* Begin PBXFileReference section */
 		34D845593005421600731F4F /* splitr.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = splitr.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		34D845663005421700731F4F /* splitrTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = splitrTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		34D845703005421700731F4F /* splitrUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = splitrUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		34D84585300542D700731F4F /* Exceptions for "splitr" folder in "splitr" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 34D845583005421600731F4F /* splitr */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		34D8455B3005421600731F4F /* splitr */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				34D84585300542D700731F4F /* Exceptions for "splitr" folder in "splitr" target */,
+			);
 			path = splitr;
 			sourceTree = "<group>";
 		};
 		34D845693005421700731F4F /* splitrTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = splitrTests;
-			sourceTree = "<group>";
-		};
-		34D845733005421700731F4F /* splitrUITests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = splitrUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -52,17 +57,12 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				34D845903005430000731F4F /* SplitBillCore in Frameworks */,
+				34D845963005430000731F4F /* SplitBillSync in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		34D845633005421700731F4F /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		34D8456D3005421700731F4F /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -77,7 +77,6 @@
 			children = (
 				34D8455B3005421600731F4F /* splitr */,
 				34D845693005421700731F4F /* splitrTests */,
-				34D845733005421700731F4F /* splitrUITests */,
 				34D8455A3005421600731F4F /* Products */,
 			);
 			sourceTree = "<group>";
@@ -87,7 +86,6 @@
 			children = (
 				34D845593005421600731F4F /* splitr.app */,
 				34D845663005421700731F4F /* splitrTests.xctest */,
-				34D845703005421700731F4F /* splitrUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -112,6 +110,8 @@
 			);
 			name = splitr;
 			packageProductDependencies = (
+				34D845913005430000731F4F /* SplitBillCore */,
+				34D845953005430000731F4F /* SplitBillSync */,
 			);
 			productName = splitr;
 			productReference = 34D845593005421600731F4F /* splitr.app */;
@@ -140,29 +140,6 @@
 			productReference = 34D845663005421700731F4F /* splitrTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
-		34D8456F3005421700731F4F /* splitrUITests */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 34D845803005421700731F4F /* Build configuration list for PBXNativeTarget "splitrUITests" */;
-			buildPhases = (
-				34D8456C3005421700731F4F /* Sources */,
-				34D8456D3005421700731F4F /* Frameworks */,
-				34D8456E3005421700731F4F /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				34D845723005421700731F4F /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				34D845733005421700731F4F /* splitrUITests */,
-			);
-			name = splitrUITests;
-			packageProductDependencies = (
-			);
-			productName = splitrUITests;
-			productReference = 34D845703005421700731F4F /* splitrUITests.xctest */;
-			productType = "com.apple.product-type.bundle.ui-testing";
-		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -180,10 +157,6 @@
 						CreatedOnToolsVersion = 26.4;
 						TestTargetID = 34D845583005421600731F4F;
 					};
-					34D8456F3005421700731F4F = {
-						CreatedOnToolsVersion = 26.4;
-						TestTargetID = 34D845583005421600731F4F;
-					};
 				};
 			};
 			buildConfigurationList = 34D845543005421600731F4F /* Build configuration list for PBXProject "splitr" */;
@@ -195,6 +168,10 @@
 			);
 			mainGroup = 34D845503005421600731F4F;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				34D845923005430000731F4F /* XCLocalSwiftPackageReference "Packages/SplitBillCore" */,
+				34D845943005430000731F4F /* XCLocalSwiftPackageReference "Packages/SplitBillSync" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 34D8455A3005421600731F4F /* Products */;
 			projectDirPath = "";
@@ -202,7 +179,6 @@
 			targets = (
 				34D845583005421600731F4F /* splitr */,
 				34D845653005421700731F4F /* splitrTests */,
-				34D8456F3005421700731F4F /* splitrUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -216,13 +192,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		34D845643005421700731F4F /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		34D8456E3005421700731F4F /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -246,13 +215,6 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		34D8456C3005421700731F4F /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -260,11 +222,6 @@
 			isa = PBXTargetDependency;
 			target = 34D845583005421600731F4F /* splitr */;
 			targetProxy = 34D845673005421700731F4F /* PBXContainerItemProxy */;
-		};
-		34D845723005421700731F4F /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 34D845583005421600731F4F /* splitr */;
-			targetProxy = 34D845713005421700731F4F /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -322,7 +279,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
@@ -380,7 +337,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
@@ -395,16 +352,19 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = splitr/splitr.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 9PP7722MM6;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = splitr/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -427,16 +387,19 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = splitr/splitr.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 9PP7722MM6;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = splitr/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -462,7 +425,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 9PP7722MM6;
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.c4.splitrTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -484,7 +447,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 9PP7722MM6;
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.c4.splitrTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -495,46 +458,6 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/splitr.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/splitr";
-			};
-			name = Release;
-		};
-		34D845813005421700731F4F /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 9PP7722MM6;
-				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.c4.splitrUITests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				STRING_CATALOG_GENERATE_SYMBOLS = NO;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = splitr;
-			};
-			name = Debug;
-		};
-		34D845823005421700731F4F /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 9PP7722MM6;
-				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.c4.splitrUITests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				STRING_CATALOG_GENERATE_SYMBOLS = NO;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = splitr;
 			};
 			name = Release;
 		};
@@ -568,16 +491,29 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		34D845803005421700731F4F /* Build configuration list for PBXNativeTarget "splitrUITests" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				34D845813005421700731F4F /* Debug */,
-				34D845823005421700731F4F /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		34D845923005430000731F4F /* XCLocalSwiftPackageReference "Packages/SplitBillCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/SplitBillCore;
+		};
+		34D845943005430000731F4F /* XCLocalSwiftPackageReference "Packages/SplitBillSync" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/SplitBillSync;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		34D845913005430000731F4F /* SplitBillCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SplitBillCore;
+		};
+		34D845953005430000731F4F /* SplitBillSync */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SplitBillSync;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 34D845513005421600731F4F /* Project object */;
 }

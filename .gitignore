@@ -1,0 +1,25 @@
+# macOS
+.DS_Store
+
+# Xcode user state (per-developer, regenerated constantly)
+xcuserdata/
+*.xcuserstate
+
+# Xcode build artifacts
+DerivedData/
+build/
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Packages/*/.build/
+
+# Playgrounds / temp
+*.playground/playground.xcworkspace
+*.profraw
+
+# Test results
+*.xcresult
+
+# Secrets / local config (none yet, but keep out by default)
+*.env
