@@ -214,14 +214,30 @@ public actor CloudKitRoomSync: RoomSyncService {
         let (zoneID, database) = try zone(for: roomID)
         let shareID = CKRecord.ID(recordName: CKRecordNameZoneWideShare, zoneID: zoneID)
 
-        if let existing = try? await database.record(for: shareID) as? CKShare,
-           let url = existing.url {
-            return url
+        if let existing = try? await database.record(for: shareID) as? CKShare {
+            if existing.publicPermission == .readWrite, let url = existing.url {
+                return url
+            }
+            // Repair shares created before link-based access was set:
+            // with .none, every link tap fails with "the owner stopped
+            // sharing" for anyone not explicitly invited.
+            existing.publicPermission = .readWrite
+            return try await saveShare(existing, in: database, zoneID: zoneID)
         }
 
         let share = CKShare(recordZoneID: zoneID)
-        share.publicPermission = .none // invite-only
+        // Link-based joining: anyone with the URL becomes a participant with
+        // write access (they add their Member record and claim items).
+        // Identity shown in the app is our Member record, never the Apple ID.
+        share.publicPermission = .readWrite
         share[CKShare.SystemFieldKey.title] = "splitr room" as CKRecordValue
+        return try await saveShare(share, in: database, zoneID: zoneID)
+    }
+
+    /// Saves the share and returns its URL only from the *server-confirmed*
+    /// record — a URL read before the save completes points at a share the
+    /// server doesn't have yet.
+    private func saveShare(_ share: CKShare, in database: CKDatabase, zoneID: CKRecordZone.ID) async throws -> URL {
         let results = try await database.modifyRecords(
             saving: [share],
             deleting: [],
@@ -245,16 +261,7 @@ public actor CloudKitRoomSync: RoomSyncService {
 
     // MARK: - Push notifications
 
-    public nonisolated func handleRemoteNotification(userInfo: [AnyHashable: Any]) async -> Bool {
-        // Parse outside the actor: the payload dictionary is not Sendable.
-        guard let notification = CKNotification(fromRemoteNotificationDictionary: userInfo),
-              notification.notificationType == .database else {
-            return false
-        }
-        return await refetchAndPublish()
-    }
-
-    private func refetchAndPublish() async -> Bool {
+    public func fetchRemoteChanges() async -> Bool {
         do {
             let rooms = try await fetchRooms()
             updatesContinuation.yield(.rooms(rooms))

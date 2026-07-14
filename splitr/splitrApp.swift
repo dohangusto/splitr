@@ -25,6 +25,13 @@ enum AppComposition {
     static var cloudStore: CloudKitRoomStore? {
         store as? CloudKitRoomStore
     }
+
+    /// MainActor bridge for the nonisolated push delegate: returns a plain
+    /// Bool so nothing non-Sendable crosses isolation.
+    static func refetchFromPush() async -> Bool {
+        guard let store = cloudStore else { return false }
+        return await store.refetchFromPush()
+    }
 }
 
 @main
@@ -48,12 +55,18 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         return true
     }
 
-    func application(
+    /// nonisolated: UIKit delivers this off the main actor, and the payload
+    /// dictionary is not Sendable — parse it here and cross isolation with
+    /// nothing but Sendable values.
+    nonisolated func application(
         _ application: UIApplication,
         didReceiveRemoteNotification userInfo: [AnyHashable: Any]
     ) async -> UIBackgroundFetchResult {
-        guard let store = await AppComposition.cloudStore else { return .noData }
-        let fetched = await store.handleRemoteNotification(userInfo: userInfo)
+        guard let notification = CKNotification(fromRemoteNotificationDictionary: userInfo),
+              notification.notificationType == .database else {
+            return .noData
+        }
+        let fetched = await AppComposition.refetchFromPush()
         return fetched ? .newData : .noData
     }
 

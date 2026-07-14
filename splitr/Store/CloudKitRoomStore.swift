@@ -149,8 +149,8 @@ final class CloudKitRoomStore: RoomStoring {
 
     /// Silent-push entry: fetches remote changes; snapshots arrive on `updates`.
     @discardableResult
-    func handleRemoteNotification(userInfo: [AnyHashable: Any]) async -> Bool {
-        await sync.handleRemoteNotification(userInfo: userInfo)
+    func refetchFromPush() async -> Bool {
+        await sync.fetchRemoteChanges()
     }
 
     // MARK: - Persistence plumbing

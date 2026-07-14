@@ -54,8 +54,10 @@ public protocol RoomSyncService: Sendable {
     /// Accepts a share invitation so the room's zone appears in the
     /// user's shared database.
     func acceptShare(metadata: CKShare.Metadata) async throws
-    /// Processes a CloudKit push. Returns true if it triggered a fetch.
-    func handleRemoteNotification(userInfo: [AnyHashable: Any]) async -> Bool
+    /// Fetches remote changes after a CloudKit push (the caller parses the
+    /// notification payload; it is not Sendable and never crosses into the
+    /// engine). Snapshots arrive on `updates`. Returns true on success.
+    func fetchRemoteChanges() async -> Bool
     /// Emits authoritative snapshots after remote-driven fetches.
     var updates: AsyncStream<SyncUpdate> { get }
 }

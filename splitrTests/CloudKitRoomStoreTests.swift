@@ -49,7 +49,7 @@ final class FakeSyncService: RoomSyncService, @unchecked Sendable {
 
     func acceptShare(metadata: ShareMetadata) async throws {}
 
-    func handleRemoteNotification(userInfo: [AnyHashable: Any]) async -> Bool { false }
+    func fetchRemoteChanges() async -> Bool { false }
 }
 
 @MainActor
