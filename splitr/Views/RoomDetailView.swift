@@ -13,6 +13,8 @@ struct RoomDetailView: View {
     @State private var showAdvanceConfirm = false
     @State private var showRollbackConfirm = false
     @State private var memberToKick: Member?
+    @State private var billToEdit: Bill?
+    @State private var billToDelete: Bill?
     @State private var inviteURL: URL?
     @State private var showNearbyHost = false
 
@@ -49,6 +51,22 @@ struct RoomDetailView: View {
         }
         .sheet(isPresented: $showScanReceipt) {
             ReceiptScanFlow(store: store, roomID: roomID)
+        }
+        .sheet(item: $billToEdit) { bill in
+            NavigationStack {
+                AddBillForm(store: store, roomID: roomID, existingBill: bill)
+            }
+        }
+        .alert(item: $billToDelete) { bill in
+            Alert(
+                title: Text("Delete \(bill.merchantName)?"),
+                message: Text("All \(bill.items.count) items on this bill will be removed."),
+                primaryButton: .destructive(Text("Delete")) {
+                    ReceiptPhotoStore.delete(bill.photoReference)
+                    store.removeBill(billID: bill.id, roomID: roomID)
+                },
+                secondaryButton: .cancel()
+            )
         }
         .sheet(item: $inviteURL) { url in
             // Members who open this link join the room's shared CloudKit zone.
@@ -292,18 +310,57 @@ struct RoomDetailView: View {
     // MARK: - Bills
 
     private func billsSection(_ room: Room) -> some View {
-        Section("Bills") {
+        // Bills stay editable while the room is .open; claiming freezes them.
+        let billsEditable = actingIsHost && room.state == .open
+        return Section {
             if room.bills.isEmpty {
                 Text("No bills yet. Scan the receipt with Add Bill below to get started.")
                     .foregroundStyle(.secondary)
             }
             ForEach(room.bills) { bill in
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(bill.merchantName).font(.headline)
-                    Text("\(bill.items.count) items · subtotal \(bill.subtotal.rupiah)")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                if billsEditable {
+                    Button {
+                        billToEdit = bill
+                    } label: {
+                        BillRow(bill: bill, showsChevron: true)
+                    }
+                    .foregroundStyle(.primary)
+                    .swipeActions(edge: .trailing) {
+                        Button("Delete", role: .destructive) {
+                            billToDelete = bill
+                        }
+                    }
+                } else {
+                    BillRow(bill: bill, showsChevron: false)
                 }
+            }
+        } header: {
+            Text("Bills")
+        } footer: {
+            if billsEditable, !room.bills.isEmpty {
+                Text("Tap a bill to fix scan mistakes, or swipe to delete it. Bills lock once claiming starts.")
+            }
+        }
+    }
+}
+
+struct BillRow: View {
+    let bill: Bill
+    let showsChevron: Bool
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(bill.merchantName).font(.headline)
+                Text("\(bill.items.count) items · subtotal \(bill.subtotal.rupiah)")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            if showsChevron {
+                Spacer()
+                Image(systemName: "chevron.forward")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
             }
         }
     }

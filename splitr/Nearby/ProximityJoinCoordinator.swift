@@ -58,10 +58,17 @@ final class ProximityJoinCoordinator {
         case failed(FailureReason)
     }
 
+    /// One friend successfully invited this session (host-side UI).
+    struct JoinedFriend: Identifiable, Equatable {
+        let id = UUID()
+        let name: String
+        let emoji: String
+    }
+
     private(set) var phase: Phase = .idle
     private(set) var connectedPeerName: String?
     /// Host: members successfully invited this session (UI list).
-    private(set) var joinedNames: [String] = []
+    private(set) var joinedFriends: [JoinedFriend] = []
     /// Increments once per gesture fire — drives haptics.
     private(set) var gestureFires = 0
 
@@ -154,7 +161,7 @@ final class ProximityJoinCoordinator {
         transport.stop()
         phase = .idle
         connectedPeerName = nil
-        joinedNames = []
+        joinedFriends = []
         hostRoom = nil
         joinerIdentity = nil
     }
@@ -340,7 +347,7 @@ final class ProximityJoinCoordinator {
                 )),
                 to: context.peer
             )
-            joinedNames.append("\(request.avatarEmoji) \(request.displayName)")
+            joinedFriends.append(JoinedFriend(name: request.displayName, emoji: request.avatarEmoji))
         }
     }
 

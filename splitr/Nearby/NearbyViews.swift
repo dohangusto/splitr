@@ -1,94 +1,11 @@
 import SwiftUI
+import SplitBillCore
 import SplitBillSync
 
-/// The proximity ring: tightens and fills as the devices approach and the
-/// dwell progresses. Progress 1 = gesture fired.
-struct ProximityRingView: View {
-    let progress: Double
-    let active: Bool
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .stroke(.quaternary, lineWidth: 10)
-            Circle()
-                .trim(from: 0, to: progress)
-                .stroke(
-                    progress >= 1 ? Color.green : Color.accentColor,
-                    style: StrokeStyle(lineWidth: 10, lineCap: .round)
-                )
-                .rotationEffect(.degrees(-90))
-                .animation(.linear(duration: 0.1), value: progress)
-            Image(systemName: progress >= 1 ? "checkmark" : "iphone.radiowaves.left.and.right")
-                .font(.system(size: 40))
-                .foregroundStyle(progress >= 1 ? .green : active ? Color.accentColor : .secondary)
-                .symbolEffect(.pulse, isActive: active && progress < 1)
-        }
-        .frame(width: 140, height: 140)
-        .padding()
-    }
-}
-
-/// Shared status layout for both sides of the proximity join flow.
-/// Pure content layer: it only *shows* the phase — retry/fallback actions
-/// live in the presenting screen's toolbar.
-private struct ProximityPhaseView: View {
-    let phase: ProximityJoinCoordinator.Phase
-    let waitingText: String
-
-    var body: some View {
-        VStack(spacing: 12) {
-            switch phase {
-            case .idle, .searching:
-                ProximityRingView(progress: 0, active: false)
-                Text(waitingText)
-                    .font(.headline)
-                ProgressView()
-
-            case .connecting(let peerName):
-                ProximityRingView(progress: 0, active: true)
-                Text("Found \(peerName)")
-                    .font(.headline)
-                Text("Connecting…")
-                    .foregroundStyle(.secondary)
-
-            case .ranging(let progress):
-                ProximityRingView(progress: progress, active: true)
-                Text("Bring the iPhones close together")
-                    .font(.headline)
-                // The UWB antenna is directional: face-to-face ranges best.
-                Text("Point your iPhone at your friend's and hold them near each other until the ring fills.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-
-            case .finishingJoin:
-                ProximityRingView(progress: 1, active: true)
-                Text("Joining the room…")
-                    .font(.headline)
-                ProgressView()
-
-            case .joined(let roomName):
-                ProximityRingView(progress: 1, active: false)
-                Text("You're in \(roomName)!")
-                    .font(.headline)
-
-            case .failed(let reason):
-                Image(systemName: "exclamationmark.triangle")
-                    .font(.system(size: 44))
-                    .foregroundStyle(.orange)
-                    .padding()
-                Text(reason.message)
-                    .font(.subheadline)
-                    .multilineTextAlignment(.center)
-            }
-        }
-        .padding()
-    }
-}
-
-/// Host side: "Add People Nearby". Advertises the room; a live ring shows
-/// the approach of the joiner; on gesture fire the invitation is handed over.
+/// Host side: "Add People Nearby", drawn as a radar — the host's avatar at
+/// the center of concentric range rings, each successfully invited friend
+/// popping onto a ring as their own avatar bubble. One advertising session
+/// serves every joiner in turn; the radar just keeps filling.
 struct NearbyHostView: View {
     let store: CloudKitRoomStore
     let roomID: UUID
@@ -100,75 +17,313 @@ struct NearbyHostView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var coordinator: ProximityJoinCoordinator?
 
+    private var hostEmoji: String {
+        let room = store.room(withID: roomID)
+        return room?.member(withID: room?.hostMemberID ?? UUID())?.avatarEmoji ?? "🙂"
+    }
+
     var body: some View {
-        NavigationStack {
-            VStack {
+        ZStack {
+            NearbyBackground()
+
+            VStack(spacing: 0) {
+                header
+                    .padding(.top, 8)
+
+                Spacer(minLength: 12)
+
                 if let coordinator {
-                    ProximityPhaseView(
-                        phase: coordinator.phase,
-                        waitingText: "Waiting for a friend's iPhone…"
-                    )
-                    if let peer = coordinator.connectedPeerName,
-                       case .ranging = coordinator.phase {
-                        Text("\(peer) is here — bring the phones together, screens facing each other.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal)
+                    statusText(coordinator.phase)
+                        .padding(.horizontal, 32)
+
+                    Spacer(minLength: 12)
+
+                    if case .failed = coordinator.phase {
+                        failureActions(coordinator)
+                    } else {
+                        NearbyRadarView(
+                            centerEmoji: hostEmoji,
+                            friends: coordinator.joinedFriends,
+                            rangingProgress: rangingProgress(coordinator.phase),
+                            incomingPeerName: incomingPeerName(coordinator)
+                        )
+                        .padding(.horizontal, 12)
                     }
-                    // One session serves everyone: the list grows as each
-                    // friend taps in, no restart needed between joiners.
-                    if !coordinator.joinedNames.isEmpty {
-                        VStack(spacing: 4) {
-                            Text("Joined this session")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                            ForEach(coordinator.joinedNames, id: \.self) { name in
-                                Text(name)
-                            }
-                        }
-                        .padding(.top, 8)
-                    }
-                }
-            }
-            .navigationTitle("Add People Nearby")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
-                }
-                // Failure recovery lives in the tools layer, not the content.
-                if let coordinator, case .failed = coordinator.phase {
-                    ToolbarItemGroup(placement: .topBarTrailing) {
-                        if let onUseLink {
-                            Button("Use Invite Link", systemImage: "link") {
-                                dismiss()
-                                onUseLink()
-                            }
-                        }
-                        Button("Try Again", systemImage: "arrow.clockwise") {
-                            restart(coordinator)
-                        }
-                    }
+
+                    Spacer(minLength: 12)
+
+                    footer(joinedCount: coordinator.joinedFriends.count)
                 }
             }
             .sensoryFeedback(.success, trigger: coordinator?.gestureFires ?? 0)
-            .onAppear {
-                let coordinator = ProximityJoinCoordinator(store: store)
-                self.coordinator = coordinator
-                coordinator.startHosting(
-                    roomID: roomID,
-                    roomName: roomName,
-                    hostDisplayName: hostDisplayName
-                )
-            }
-            .onDisappear { coordinator?.stop() }
         }
+        .onAppear {
+            let coordinator = ProximityJoinCoordinator(store: store)
+            self.coordinator = coordinator
+            coordinator.startHosting(
+                roomID: roomID,
+                roomName: roomName,
+                hostDisplayName: hostDisplayName
+            )
+        }
+        .onDisappear { coordinator?.stop() }
     }
 
-    private func restart(_ coordinator: ProximityJoinCoordinator) {
-        coordinator.stop()
-        coordinator.startHosting(roomID: roomID, roomName: roomName, hostDisplayName: hostDisplayName)
+    private var header: some View {
+        HStack {
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .frame(width: 44, height: 44)
+                    .background(.background, in: .circle)
+                    .shadow(color: .black.opacity(0.08), radius: 6, y: 2)
+            }
+            .accessibilityLabel("Back")
+            Spacer()
+        }
+        .padding(.horizontal, 20)
+    }
+
+    @ViewBuilder
+    private func statusText(_ phase: ProximityJoinCoordinator.Phase) -> some View {
+        VStack(spacing: 6) {
+            switch phase {
+            case .idle, .searching, .joined:
+                Text("Looking nearby…").font(.headline)
+                Text("Your friends will appear here in a moment.")
+                    .font(.subheadline).foregroundStyle(.secondary)
+            case .connecting(let peerName):
+                Text("Found \(peerName)").font(.headline)
+                Text("Connecting…")
+                    .font(.subheadline).foregroundStyle(.secondary)
+            case .ranging:
+                Text("Bring the iPhones close together").font(.headline)
+                // The UWB antenna is directional: face-to-face ranges best.
+                Text("Hold them near each other until the circle fills.")
+                    .font(.subheadline).foregroundStyle(.secondary)
+            case .finishingJoin:
+                Text("Almost in…").font(.headline)
+            case .failed(let reason):
+                Text("Couldn't add people nearby").font(.headline)
+                Text(reason.message)
+                    .font(.subheadline).foregroundStyle(.secondary)
+            }
+        }
+        .multilineTextAlignment(.center)
+    }
+
+    private func failureActions(_ coordinator: ProximityJoinCoordinator) -> some View {
+        VStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 44))
+                .foregroundStyle(.orange)
+                .padding(.bottom, 8)
+            Button {
+                coordinator.stop()
+                coordinator.startHosting(roomID: roomID, roomName: roomName, hostDisplayName: hostDisplayName)
+            } label: {
+                Label("Try Again", systemImage: "arrow.clockwise")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            if let onUseLink {
+                Button {
+                    dismiss()
+                    onUseLink()
+                } label: {
+                    Label("Use Invite Link", systemImage: "link")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .padding(.horizontal, 40)
+    }
+
+    private func footer(joinedCount: Int) -> some View {
+        VStack(spacing: 16) {
+            Text(joinedCount == 0
+                ? "No Friends Joined Yet"
+                : "^[\(joinedCount) Friend](inflect: true) Joined")
+                .font(.title3.weight(.semibold))
+                .contentTransition(.numericText())
+                .animation(.snappy, value: joinedCount)
+            Button {
+                dismiss()
+            } label: {
+                Text("Continue")
+                    .font(.body.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
+            }
+            .buttonStyle(.borderedProminent)
+            .buttonBorderShape(.capsule)
+            .controlSize(.large)
+        }
+        .padding(.horizontal, 24)
+        .padding(.bottom, 16)
+    }
+
+    private func rangingProgress(_ phase: ProximityJoinCoordinator.Phase) -> Double? {
+        if case .ranging(let progress) = phase { return progress }
+        return nil
+    }
+
+    /// The peer currently connecting/ranging — shown as a faded bubble on
+    /// the outer ring until their join completes.
+    private func incomingPeerName(_ coordinator: ProximityJoinCoordinator) -> String? {
+        switch coordinator.phase {
+        case .connecting(let peerName): peerName
+        case .ranging: coordinator.connectedPeerName
+        default: nil
+        }
+    }
+}
+
+// MARK: - Radar
+
+/// Soft top-to-bottom wash behind the radar screen.
+private struct NearbyBackground: View {
+    var body: some View {
+        LinearGradient(
+            colors: [Color.accentColor.opacity(0.18), Color.accentColor.opacity(0.04)],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .background(Color(.systemBackground))
+        .ignoresSafeArea()
+    }
+}
+
+/// Concentric range rings with the host at the center and each joined
+/// friend as an avatar bubble on a ring. Purely presentational.
+private struct NearbyRadarView: View {
+    let centerEmoji: String
+    let friends: [ProximityJoinCoordinator.JoinedFriend]
+    /// Non-nil while NI is ranging a joiner; fills the circle around the host.
+    let rangingProgress: Double?
+    /// Peer connecting/ranging right now, not yet joined.
+    let incomingPeerName: String?
+
+    @State private var pulse = false
+
+    /// Fixed slots so bubbles never jump when new friends arrive:
+    /// (angle in degrees, radius as a fraction of the outer ring).
+    private static let slots: [(angle: Double, radius: Double)] = [
+        (-70, 0.66), (170, 0.95), (25, 0.63), (205, 0.68), (65, 0.92),
+        (140, 0.60), (-15, 0.94), (250, 0.93), (100, 0.65), (-45, 0.96),
+    ]
+
+    var body: some View {
+        GeometryReader { proxy in
+            let side = min(proxy.size.width, proxy.size.height)
+            let center = CGPoint(x: proxy.size.width / 2, y: proxy.size.height / 2)
+            let outerRadius = side / 2 - 30
+            let centerSize = side * 0.24
+
+            ZStack {
+                ForEach([0.36, 0.68, 1.0], id: \.self) { scale in
+                    Circle()
+                        .stroke(Color.accentColor.opacity(0.25), lineWidth: 1)
+                        .frame(width: outerRadius * 2 * scale, height: outerRadius * 2 * scale)
+                        .position(center)
+                }
+
+                // Searching pulse: a ring breathing outward from the host.
+                Circle()
+                    .stroke(Color.accentColor.opacity(pulse ? 0 : 0.35), lineWidth: 2)
+                    .frame(width: centerSize, height: centerSize)
+                    .scaleEffect(pulse ? 2.6 : 1)
+                    .position(center)
+                    .animation(.easeOut(duration: 2).repeatForever(autoreverses: false), value: pulse)
+
+                // Host at the center; the ranging dwell fills the outline.
+                ZStack {
+                    Circle()
+                        .fill(.background)
+                        .shadow(color: .black.opacity(0.1), radius: 8, y: 2)
+                    Circle()
+                        .stroke(Color.accentColor.opacity(0.4), lineWidth: 2)
+                    if let rangingProgress {
+                        Circle()
+                            .trim(from: 0, to: rangingProgress)
+                            .stroke(
+                                rangingProgress >= 1 ? Color.green : Color.accentColor,
+                                style: StrokeStyle(lineWidth: 4, lineCap: .round)
+                            )
+                            .rotationEffect(.degrees(-90))
+                            .animation(.linear(duration: 0.1), value: rangingProgress)
+                    }
+                    Text(centerEmoji)
+                        .font(.system(size: centerSize * 0.5))
+                }
+                .frame(width: centerSize, height: centerSize)
+                .position(center)
+
+                ForEach(Array(friends.enumerated()), id: \.element.id) { index, friend in
+                    let slot = Self.slots[index % Self.slots.count]
+                    AvatarBubble(emoji: friend.emoji, name: friend.name, size: side * 0.155)
+                        .position(position(slot: slot, center: center, outerRadius: outerRadius))
+                        .transition(.scale.combined(with: .opacity))
+                }
+
+                // The friend mid-handshake fades in on the outer ring.
+                if let incomingPeerName {
+                    AvatarBubble(emoji: "📡", name: incomingPeerName, size: side * 0.155)
+                        .opacity(0.55)
+                        .position(position(
+                            slot: Self.slots[friends.count % Self.slots.count],
+                            center: center,
+                            outerRadius: outerRadius
+                        ))
+                }
+            }
+            .animation(.bouncy, value: friends)
+        }
+        .aspectRatio(1, contentMode: .fit)
+        .onAppear { pulse = true }
+    }
+
+    private func position(
+        slot: (angle: Double, radius: Double),
+        center: CGPoint,
+        outerRadius: CGFloat
+    ) -> CGPoint {
+        let radians = slot.angle * .pi / 180
+        return CGPoint(
+            x: center.x + cos(radians) * outerRadius * slot.radius,
+            y: center.y + sin(radians) * outerRadius * slot.radius
+        )
+    }
+}
+
+/// One friend on the radar: emoji avatar in a white bubble, name underneath.
+private struct AvatarBubble: View {
+    let emoji: String
+    let name: String
+    let size: CGFloat
+
+    var body: some View {
+        VStack(spacing: 2) {
+            ZStack {
+                Circle()
+                    .fill(.background)
+                    .shadow(color: .black.opacity(0.12), radius: 5, y: 2)
+                Text(emoji)
+                    .font(.system(size: size * 0.52))
+            }
+            .frame(width: size, height: size)
+            Text(name)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .frame(maxWidth: size * 1.6)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(name) joined")
     }
 }
 
@@ -186,80 +341,190 @@ struct NearbyJoinView: View {
     @State private var showLinkEntry = false
 
     var body: some View {
+        Group {
+            if let coordinator, started {
+                joinRadar(coordinator)
+            } else {
+                entryForm
+            }
+        }
+        .sheet(isPresented: $showLinkEntry) {
+            JoinViaLinkView(store: store)
+        }
+        .sensoryFeedback(.success, trigger: coordinator?.gestureFires ?? 0)
+        .onDisappear { coordinator?.stop() }
+    }
+
+    // MARK: Entry form (name + emoji before searching)
+
+    private var entryForm: some View {
         NavigationStack {
-            Group {
-                if let coordinator, started {
-                    ProximityPhaseView(
-                        phase: coordinator.phase,
-                        waitingText: "Looking for a host nearby…"
-                    )
-                } else {
-                    Form {
-                        Section {
-                            TextField("Display name", text: $name)
-                            EmojiPicker(selection: $emoji)
-                        } header: {
-                            Text("You")
-                        } footer: {
-                            Text("Tap Find the Host below, then bring your iPhone close to the host's iPhone to join. If your friend sent a link in Messages, just tap it there — it opens splitr directly.")
-                        }
-                    }
+            Form {
+                Section {
+                    TextField("Display name", text: $name)
+                    EmojiPicker(selection: $emoji)
+                } header: {
+                    Text("You")
+                } footer: {
+                    Text("Tap Find the Host below, then bring your iPhone close to the host's iPhone to join. If your friend sent a link in Messages, just tap it there — it opens splitr directly.")
                 }
             }
             .navigationTitle("Join Nearby")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { joinToolbar }
-            .sheet(isPresented: $showLinkEntry) {
-                JoinViaLinkView(store: store)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Join with an Invite Link", systemImage: "link") {
+                        showLinkEntry = true
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Find the Host") {
+                        start()
+                    }
+                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
             }
-            .sensoryFeedback(.success, trigger: coordinator?.gestureFires ?? 0)
-            .onDisappear { coordinator?.stop() }
         }
     }
 
-    /// Phase-dependent actions in the top toolbar: find/retry/fallback while
-    /// joining, the confirm once joined. Content below only shows status.
-    @ToolbarContentBuilder
-    private var joinToolbar: some ToolbarContent {
-        ToolbarItem(placement: .cancellationAction) {
-            Button("Cancel") { dismiss() }
-        }
-        if let coordinator, started {
-            switch coordinator.phase {
-            case .failed:
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button("Use Invite Link", systemImage: "link") {
+    // MARK: Radar (searching → ranging → joined)
+
+    private func joinRadar(_ coordinator: ProximityJoinCoordinator) -> some View {
+        ZStack {
+            NearbyBackground()
+
+            VStack(spacing: 0) {
+                HStack {
+                    Button {
+                        // Back to the name form, not out of the sheet —
+                        // stops the session cleanly either way.
                         coordinator.stop()
-                        showLinkEntry = true
+                        started = false
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .frame(width: 44, height: 44)
+                            .background(.background, in: .circle)
+                            .shadow(color: .black.opacity(0.08), radius: 6, y: 2)
                     }
-                    Button("Try Again", systemImage: "arrow.clockwise") {
-                        coordinator.stop()
-                        coordinator.startJoining(displayName: name, avatarEmoji: emoji)
-                    }
+                    .accessibilityLabel("Back")
+                    Spacer()
                 }
-            case .joined:
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Open the Room") {
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+
+                Spacer(minLength: 12)
+
+                joinStatusText(coordinator.phase)
+                    .padding(.horizontal, 32)
+
+                Spacer(minLength: 12)
+
+                if case .failed = coordinator.phase {
+                    joinFailureActions(coordinator)
+                } else {
+                    NearbyRadarView(
+                        centerEmoji: emoji,
+                        friends: [],
+                        rangingProgress: {
+                            if case .ranging(let progress) = coordinator.phase { return progress }
+                            return nil
+                        }(),
+                        incomingPeerName: {
+                            switch coordinator.phase {
+                            case .connecting(let peerName): peerName
+                            case .ranging: coordinator.connectedPeerName
+                            default: nil
+                            }
+                        }()
+                    )
+                    .padding(.horizontal, 12)
+                }
+
+                Spacer(minLength: 12)
+
+                if case .joined = coordinator.phase {
+                    Button {
                         dismiss()
+                    } label: {
+                        Text("Open the Room")
+                            .font(.body.weight(.semibold))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 6)
                     }
+                    .buttonStyle(.borderedProminent)
+                    .buttonBorderShape(.capsule)
+                    .controlSize(.large)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 16)
                 }
-            default:
-                // Searching/ranging: nothing to act on; Cancel is enough.
-                ToolbarItem(placement: .automatic) { EmptyView() }
-            }
-        } else {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("Join with an Invite Link", systemImage: "link") {
-                    showLinkEntry = true
-                }
-            }
-            ToolbarItem(placement: .confirmationAction) {
-                Button("Find the Host") {
-                    start()
-                }
-                .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
+    }
+
+    @ViewBuilder
+    private func joinStatusText(_ phase: ProximityJoinCoordinator.Phase) -> some View {
+        VStack(spacing: 6) {
+            switch phase {
+            case .idle, .searching:
+                Text("Looking for the host…").font(.headline)
+                Text("Move close to your friend's iPhone.")
+                    .font(.subheadline).foregroundStyle(.secondary)
+            case .connecting(let peerName):
+                Text("Found \(peerName)").font(.headline)
+                Text("Connecting…")
+                    .font(.subheadline).foregroundStyle(.secondary)
+            case .ranging:
+                Text("Bring the iPhones close together").font(.headline)
+                // The UWB antenna is directional: face-to-face ranges best.
+                Text("Hold them near each other until the circle fills.")
+                    .font(.subheadline).foregroundStyle(.secondary)
+            case .finishingJoin:
+                Text("Joining the room…").font(.headline)
+                ProgressView()
+            case .joined(let roomName):
+                Text("You're in \(roomName)!").font(.headline)
+                Text("Claim your items once the host starts claiming.")
+                    .font(.subheadline).foregroundStyle(.secondary)
+            case .failed(let reason):
+                Text("Couldn't join nearby").font(.headline)
+                Text(reason.message)
+                    .font(.subheadline).foregroundStyle(.secondary)
+            }
+        }
+        .multilineTextAlignment(.center)
+    }
+
+    private func joinFailureActions(_ coordinator: ProximityJoinCoordinator) -> some View {
+        VStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 44))
+                .foregroundStyle(.orange)
+                .padding(.bottom, 8)
+            Button {
+                coordinator.stop()
+                coordinator.startJoining(displayName: name, avatarEmoji: emoji)
+            } label: {
+                Label("Try Again", systemImage: "arrow.clockwise")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            if AppComposition.cloudStore != nil {
+                Button {
+                    coordinator.stop()
+                    showLinkEntry = true
+                } label: {
+                    Label("Use Invite Link", systemImage: "link")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .padding(.horizontal, 40)
     }
 
     private func start() {

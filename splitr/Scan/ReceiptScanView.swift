@@ -14,120 +14,136 @@ struct ReceiptScanFlow: View {
     @Environment(\.dismiss) private var dismiss
     @State private var phase: Phase = .pickSource
     @State private var showCamera = false
+    @State private var showPhotoPicker = false
     @State private var photoSelection: PhotosPickerItem?
+    @State private var capturedImages: [UIImage] = []
 
     enum Phase {
         case pickSource
         case processing
-        case review(ParsedReceipt)
+        case review(ParsedReceipt, photo: UIImage?)
         case failed(String)
     }
 
+    // One NavigationStack stays mounted for every phase, and the camera
+    // cover / photo picker hang off it — never off a view inside the
+    // `switch`. If their anchor view is swapped out while the picker is
+    // still dismissing, SwiftUI propagates that dismissal to the parent
+    // presentation and the whole sheet closes (review flashed then died).
     var body: some View {
-        switch phase {
-        case .pickSource:
-            sourcePicker
-        case .processing:
-            NavigationStack {
-                ProgressView("Reading receipt…")
-                    .navigationTitle("Scan Receipt")
-                    .navigationBarTitleDisplayMode(.inline)
-            }
-        case .review(let parsed):
-            // The non-negotiable step: parsed drafts go through the edit
-            // form and only an explicit Save creates the Bill.
-            AddBillView(store: store, roomID: roomID, scan: parsed)
-        case .failed(let message):
-            NavigationStack {
-                ContentUnavailableView {
-                    Label("Couldn't read that", systemImage: "doc.viewfinder")
-                } description: {
-                    Text(message)
-                }
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel") { dismiss() }
+        NavigationStack {
+            Group {
+                switch phase {
+                case .pickSource:
+                    sourcePicker
+                case .processing:
+                    ProgressView("Reading receipt…")
+                        .navigationTitle("Scan Receipt")
+                        .navigationBarTitleDisplayMode(.inline)
+                case .review(let parsed, let photo):
+                    // The non-negotiable step: parsed drafts go through the
+                    // edit form and only an explicit Save creates the Bill.
+                    // The photo rides along so the user verifies against it
+                    // without leaving the form.
+                    AddBillForm(store: store, roomID: roomID, scan: parsed, photo: photo)
+                case .failed(let message):
+                    ContentUnavailableView {
+                        Label("Couldn't read that", systemImage: "doc.viewfinder")
+                    } description: {
+                        Text(message)
                     }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Try Again") {
-                            phase = .pickSource
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Cancel") { dismiss() }
+                        }
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Try Again") {
+                                phase = .pickSource
+                            }
                         }
                     }
                 }
+            }
+        }
+        .fullScreenCover(isPresented: $showCamera, onDismiss: processCapturedImages) {
+            DocumentCameraView { images in
+                capturedImages = images
+                showCamera = false
+            } onCancel: {
+                showCamera = false
+            }
+            .ignoresSafeArea()
+        }
+        .photosPicker(isPresented: $showPhotoPicker, selection: $photoSelection, matching: .images)
+        .onChange(of: photoSelection) { _, item in
+            guard let item else { return }
+            photoSelection = nil
+            phase = .processing
+            Task {
+                guard let data = try? await item.loadTransferable(type: Data.self),
+                      let image = UIImage(data: data) else {
+                    phase = .failed("That photo couldn't be loaded. Try another one.")
+                    return
+                }
+                await recognize([image])
             }
         }
     }
 
     private var sourcePicker: some View {
-        NavigationStack {
-            List {
-                Section {
-                    if DocumentCameraView.isSupported {
-                        Button {
-                            showCamera = true
-                        } label: {
-                            Label("Scan with Camera", systemImage: "doc.viewfinder")
-                        }
+        List {
+            Section {
+                if DocumentCameraView.isSupported {
+                    Button {
+                        showCamera = true
+                    } label: {
+                        Label("Scan with Camera", systemImage: "doc.viewfinder")
                     }
-                    PhotosPicker(selection: $photoSelection, matching: .images) {
-                        Label("Choose a Photo", systemImage: "photo.on.rectangle")
-                    }
-                } footer: {
-                    if DocumentCameraView.isSupported {
-                        Text("The camera scanner crops and straightens the receipt automatically.")
-                    } else {
-                        Text("The camera scanner needs a physical device — pick a receipt photo instead.")
-                    }
+                }
+                Button {
+                    showPhotoPicker = true
+                } label: {
+                    Label("Choose a Photo", systemImage: "photo.on.rectangle")
+                }
+            } footer: {
+                if DocumentCameraView.isSupported {
+                    Text("The camera scanner crops and straightens the receipt automatically.")
+                } else {
+                    Text("The camera scanner needs a physical device — pick a receipt photo instead.")
                 }
             }
-            .navigationTitle("Scan Receipt")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-            }
-            .fullScreenCover(isPresented: $showCamera) {
-                DocumentCameraView { images in
-                    process(images)
-                } onCancel: {
-                    showCamera = false
-                }
-                .ignoresSafeArea()
-            }
-            .onChange(of: photoSelection) { _, item in
-                guard let item else { return }
-                phase = .processing
-                Task {
-                    guard let data = try? await item.loadTransferable(type: Data.self),
-                          let cgImage = UIImage(data: data)?.cgImage else {
-                        phase = .failed("That photo couldn't be loaded. Try another one.")
-                        return
-                    }
-                    await recognize([cgImage])
-                }
+        }
+        .navigationTitle("Scan Receipt")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel") { dismiss() }
             }
         }
     }
 
-    private func process(_ images: [UIImage]) {
-        showCamera = false
+    /// Runs after the camera cover has fully dismissed, so the phase swap
+    /// never races the cover's dismissal animation.
+    private func processCapturedImages() {
+        guard !capturedImages.isEmpty else { return }
+        let images = capturedImages
+        capturedImages = []
         phase = .processing
-        let cgImages = images.compactMap(\.cgImage)
-        Task { await recognize(cgImages) }
+        Task { await recognize(images) }
     }
 
-    private func recognize(_ images: [CGImage]) async {
+    private func recognize(_ images: [UIImage]) async {
         do {
             var lines: [String] = []
             for image in images {
-                lines += try await recognizer.recognizeLines(in: image)
+                guard let cgImage = image.cgImage else { continue }
+                lines += try await recognizer.recognizeLines(in: cgImage)
             }
             let parsed = ReceiptParser.parse(lines: lines)
             if parsed.items.isEmpty && parsed.unparsedLines.isEmpty {
                 phase = .failed("No text found. Get closer to the receipt in good light, or enter the bill manually.")
             } else {
-                phase = .review(parsed)
+                phase = .review(parsed, photo: images.first)
             }
         } catch {
             phase = .failed("Text recognition failed. Try again, or enter the bill manually.")

@@ -61,6 +61,23 @@ Keep this dependency direction strict: Core knows nothing about Sync or UI.
 
 Settlement math lives in Core as pure functions: per-member subtotal → proportional tax/service allocation → whole-rupiah rounding → host absorbs remainder. Property/unit tests must pin these rules.
 
+## UI layering model
+
+The UI is three layers. Decide where something belongs by **scope** — "does this action belong to the app, to this screen, or to this piece of data?" — not by whether it happens to be a button.
+
+1. **Content layer (innermost)** — the data the user came for, and the controls that belong to a specific piece of that data. Scrolls. Example: claiming an item belongs to that item's row, not to a toolbar.
+2. **UI tools layer (outermost)** — floats above content, and splits into two sublayers with different lifetimes:
+   - **Tab bar** — global, survives navigation, belongs to the *app*. Putting something here says "relevant everywhere."
+   - **Toolbar** — per-screen, changes on every push, belongs to *this screen*. Putting something here says "relevant only here."
+   - A **bottom accessory** is a tab-bar citizen: content-aware, but tied to the tab bar's presence — it disappears wherever the tab bar is hidden.
+3. **Transient layer** — sheets, alerts, popovers, the keyboard. Overlays both and leaves. The proximity join flow lives here.
+
+Rules:
+
+- **The tools layer floats, but it yields.** It is not static furniture: the tab bar minimizes on scroll, the toolbar adapts, and a bottom accessory moves from `.expanded` to `.inline`. Controls surface when needed and recede when not — never design against that.
+- **Do not push actions into the toolbar for tidiness.** An action that belongs to a row, a total, or an empty state belongs in content. A screen's primary paths must be reachable where a first-time user will actually look — for Home, the empty state must present *both* Create and Join, since a user who cannot host still needs Join.
+- Content is what the app is for; the tools layer is how to move around it. When in doubt, prefer content.
+
 ## Tech conventions
 
 - Swift 6, SwiftUI, `@Observable` view models (no Combine-era ObservableObject unless required).

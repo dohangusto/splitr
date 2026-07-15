@@ -112,7 +112,9 @@ struct RoomListView: View {
     private var roomsTab: some View {
         NavigationStack(path: $roomsPath) {
             Group {
-                if activeRooms.isEmpty {
+                if activeRooms.isEmpty && store.isLoadingRooms {
+                    loadingState
+                } else if activeRooms.isEmpty {
                     emptyState
                 } else {
                     List(activeRooms) { room in
@@ -162,12 +164,28 @@ struct RoomListView: View {
         }
     }
 
+    /// Initial iCloud fetch in flight: say so, instead of flashing a false
+    /// "no rooms" that reads as lost data.
+    private var loadingState: some View {
+        VStack(spacing: 12) {
+            ProgressView()
+                .controlSize(.large)
+            Text("Getting your rooms…")
+                .font(.headline)
+            Text("Fetching your bill rooms from iCloud.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+    }
+
     // MARK: - History tab
 
     private var historyTab: some View {
         NavigationStack(path: $historyPath) {
             Group {
-                if closedRooms.isEmpty {
+                if closedRooms.isEmpty && store.isLoadingRooms {
+                    loadingState
+                } else if closedRooms.isEmpty {
                     ContentUnavailableView {
                         Label("No closed rooms yet", systemImage: "archivebox")
                     } description: {
@@ -298,7 +316,7 @@ private struct JoinCreateAccessory: View {
                         .frame(maxWidth: .infinity)
                 }
                 Button(action: onCreate) {
-                    Label("Scan a Receipt", systemImage: "doc.viewfinder")
+                    Label("New Bill", systemImage: "doc.viewfinder")
                         .frame(maxWidth: .infinity)
                 }
                 .disabled(isCheckingHosting)

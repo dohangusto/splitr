@@ -19,6 +19,9 @@ struct StoreAlert: Identifiable, Equatable {
 protocol RoomStoring: AnyObject, Observable {
     var rooms: [Room] { get }
     var alert: StoreAlert? { get set }
+    /// True while the initial room fetch is still in flight — the UI shows
+    /// a loading state instead of a misleading "no rooms" empty state.
+    var isLoadingRooms: Bool { get }
 
     func room(withID id: UUID) -> Room?
 
@@ -35,6 +38,10 @@ protocol RoomStoring: AnyObject, Observable {
     func kick(memberID: UUID, roomID: UUID)
 
     func addBill(_ bill: Bill, roomID: UUID)
+    /// Host-only; allowed only while the room is `.open`.
+    func updateBill(_ bill: Bill, roomID: UUID)
+    /// Host-only; allowed only while the room is `.open`.
+    func removeBill(billID: UUID, roomID: UUID)
 
     func claim(itemID: UUID, billID: UUID, roomID: UUID)
     func joinClaim(itemID: UUID, billID: UUID, roomID: UUID)

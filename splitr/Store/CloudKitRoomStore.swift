@@ -16,6 +16,9 @@ import SplitBillSync
 final class CloudKitRoomStore: RoomStoring {
     private(set) var rooms: [Room] = []
     var alert: StoreAlert?
+    /// True until the first fetch settles (success or failure), so launch
+    /// shows "loading" instead of a false "no rooms yet".
+    private(set) var isLoadingRooms = true
 
     private var actingByRoom: [UUID: UUID] = [:]
     private let sync: any RoomSyncService
@@ -36,6 +39,7 @@ final class CloudKitRoomStore: RoomStoring {
         } catch {
             alert = StoreAlert(message: "Couldn't reach iCloud. Your changes will not sync yet.")
         }
+        isLoadingRooms = false
         for await update in sync.updates {
             if case .rooms(let serverRooms) = update {
                 rooms = serverRooms
@@ -100,6 +104,16 @@ final class CloudKitRoomStore: RoomStoring {
 
     func addBill(_ bill: Bill, roomID: UUID) {
         mutate(roomID) { room, actor in try room.addBill(bill, by: actor) }
+    }
+
+    // Full-room push diffs against the cached records, so replaced or
+    // removed items become CKRecord deletes — no orphans left in the zone.
+    func updateBill(_ bill: Bill, roomID: UUID) {
+        mutate(roomID) { room, actor in try room.updateBill(bill, by: actor) }
+    }
+
+    func removeBill(billID: UUID, roomID: UUID) {
+        mutate(roomID) { room, actor in try room.removeBill(withID: billID, by: actor) }
     }
 
     func claim(itemID: UUID, billID: UUID, roomID: UUID) {
