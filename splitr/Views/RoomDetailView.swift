@@ -36,10 +36,21 @@ struct RoomDetailView: View {
             debugActingSection(room)
             #endif
 
-            stateSection(room)
+            // Horizontal Stepper Section
+            Section {
+                RoomProgressStepper(currentState: room.state)
+                    .padding(.vertical, 8)
+            }
+
+            // Contextual Guidance CTA Card Section
+            if let actingID {
+                guidanceSection(room: room, actingID: actingID)
+            }
+
             membersSection(room)
             billsSection(room)
         }
+        .listStyle(.insetGrouped)
         .navigationTitle(room.name)
         .navigationBarTitleDisplayMode(.inline)
         // Detail screen owns its chrome: Home's tab bar steps aside so the
@@ -118,37 +129,14 @@ struct RoomDetailView: View {
         }
     }
 
-    /// All room actions live in the top toolbar, clustered at trailing like
-    /// the Examples' `principalTrailingItems` — the content list only
-    /// informs and navigates. Add-people and add-bill are menus; advancing
-    /// the state machine is the last (primary) item.
+    /// Toolbar is simplified: gathers manual additions/invitation settings
+    /// into a single menu button, keeping the rest of the interface focused on content.
     @ToolbarContentBuilder
     private func detailToolbar(_ room: Room) -> some ToolbarContent {
         if room.state == .open || room.state == .claiming {
-            ToolbarItemGroup(placement: .topBarTrailing) {
+            ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    if actingIsHost, AppComposition.cloudStore != nil {
-                        Button {
-                            showNearbyHost = true
-                        } label: {
-                            Label("Add People Nearby", systemImage: "iphone.radiowaves.left.and.right")
-                        }
-                        Button {
-                            fetchInviteURL()
-                        } label: {
-                            Label("Invite via iCloud Link", systemImage: "link.badge.plus")
-                        }
-                    }
-                    Button {
-                        showJoinMember = true
-                    } label: {
-                        Label("Add Member Manually", systemImage: "keyboard")
-                    }
-                } label: {
-                    Label("Add People", systemImage: "person.badge.plus")
-                }
-                if actingIsHost {
-                    Menu {
+                    if actingIsHost {
                         Button {
                             showScanReceipt = true
                         } label: {
@@ -157,25 +145,31 @@ struct RoomDetailView: View {
                         Button {
                             showAddBill = true
                         } label: {
-                            Label("Enter Bill Manually", systemImage: "keyboard")
+                            Label("Add Bill Manually", systemImage: "keyboard")
                         }
+                        
+                        Divider()
+                        
+                        if AppComposition.cloudStore != nil {
+                            Button {
+                                showNearbyHost = true
+                            } label: {
+                                Label("Add People Nearby", systemImage: "iphone.radiowaves.left.and.right")
+                            }
+                            Button {
+                                fetchInviteURL()
+                            } label: {
+                                Label("Invite via Link", systemImage: "link.badge.plus")
+                            }
+                        }
+                    }
+                    Button {
+                        showJoinMember = true
                     } label: {
-                        Label("Add Bill", systemImage: "doc.badge.plus")
+                        Label("Add Member Manually", systemImage: "keyboard")
                     }
-                }
-            }
-            if actingIsHost {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(advanceLabel(room.state), systemImage: "arrow.forward.circle") {
-                        showAdvanceConfirm = true
-                    }
-                }
-            }
-        }
-        if actingIsHost, room.state == .settling {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("Reopen Claiming", systemImage: "arrow.uturn.backward.circle") {
-                    showRollbackConfirm = true
+                } label: {
+                    Label("Add Items or People", systemImage: "plus.circle")
                 }
             }
         }
@@ -208,76 +202,241 @@ struct RoomDetailView: View {
         } footer: {
             Text("Simulator-only stand-in for separate devices. Every action below runs as this member.")
         }
-        .listRowBackground(Color.yellow.opacity(0.15))
     }
     #endif
 
-    // MARK: - State
-
-    private func stateSection(_ room: Room) -> some View {
-        Section("Stage") {
-            HStack {
-                RoomStateBadge(state: room.state)
-                Text(stateDescription(room))
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-
-            if room.state == .claiming {
-                NavigationLink {
-                    ClaimingView(store: store, roomID: roomID)
-                } label: {
-                    Label("Claim Items", systemImage: "hand.tap")
-                }
-            }
-            if room.state == .settling || room.state == .closed {
-                NavigationLink {
-                    SettlementView(store: store, roomID: roomID)
-                } label: {
-                    Label(room.state == .closed ? "Final Summary" : "Settlement", systemImage: "banknote")
-                }
-            }
-
-        }
-    }
-
-    private func stateDescription(_ room: Room) -> String {
+    @ViewBuilder
+    private func guidanceSection(room: Room, actingID: UUID) -> some View {
+        let actingIsHost = actingID == room.hostMemberID
+        
         switch room.state {
-        case .open: "Invite members and add bills."
-        case .claiming: "Everyone picks their own items."
-        case .settling: "Pay the host back. Close the room in Settlement once everyone is confirmed."
-        case .closed: "Read-only history."
+        case .open:
+            if actingIsHost {
+                Section {
+                    if room.bills.isEmpty {
+                        Button(action: { showScanReceipt = true }) {
+                            Label("Scan Receipt", systemImage: "doc.viewfinder")
+                        }
+                        Button(action: { showAddBill = true }) {
+                            Label("Enter Manually", systemImage: "keyboard")
+                        }
+                    } else if room.members.count <= 1 {
+                        Button(action: { showNearbyHost = true }) {
+                            Label("Add People Nearby", systemImage: "iphone.radiowaves.left.and.right")
+                        }
+                        Button(action: { fetchInviteURL() }) {
+                            Label("Share Invite Link", systemImage: "link.badge.plus")
+                        }
+                    } else {
+                        Button(action: { showAdvanceConfirm = true }) {
+                            Text("Start Claiming Phase")
+                                .frame(maxWidth: .infinity, alignment: .center)
+                        }
+                    }
+                } header: {
+                    Text("Host Setup Checklist")
+                } footer: {
+                    if room.bills.isEmpty {
+                        Text("Start by scanning restaurant receipts.")
+                    } else if room.members.count <= 1 {
+                        Text("Invite friends to join the room.")
+                    } else {
+                        Text("You have bills and members. Ready to start claiming.")
+                    }
+                }
+            } else {
+                Section {
+                    HStack {
+                        Spacer()
+                        VStack(spacing: 12) {
+                            ProgressView()
+                            Text("Waiting for Host...")
+                                .font(.headline)
+                            Text("The host is setting up bills and members.")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                        }
+                        .padding(.vertical, 16)
+                        Spacer()
+                    }
+                }
+            }
+            
+        case .claiming:
+            let totalItems = room.bills.flatMap(\.items).count
+            let claimedItems = room.bills.flatMap(\.items).filter {
+                if case .unclaimed = $0.claimState { return false }
+                return true
+            }.count
+            let subtotal = claimedSubtotal(room: room, memberID: actingID)
+            
+            Section {
+                HStack {
+                    Text("Items Claimed")
+                    Spacer()
+                    Text("\(claimedItems) of \(totalItems)")
+                        .foregroundColor(.secondary)
+                }
+                
+                HStack {
+                    Text("Your Subtotal")
+                    Spacer()
+                    Text(subtotal.rupiah)
+                        .foregroundColor(.secondary)
+                }
+                
+                NavigationLink(destination: ClaimingView(store: store, roomID: room.id)) {
+                    Text("Claim Items")
+                }
+                
+                if actingIsHost {
+                    Button(action: { showAdvanceConfirm = true }) {
+                        Text("Close Claiming & Settle")
+                    }
+                }
+            } header: {
+                Text("Pick Your Items")
+            } footer: {
+                Text("Select the food and drinks you ordered.")
+            }
+            
+        case .settling:
+            if actingIsHost {
+                let totalMembers = room.members.filter { !$0.isHost }.count
+                let confirmedMembers = room.members.filter { !$0.isHost && $0.paymentStatus == .hostConfirmed }.count
+                let allSettled = confirmedMembers == totalMembers && totalMembers > 0
+                
+                Section {
+                    HStack {
+                        Text("Settlement Progress")
+                        Spacer()
+                        Text("\(confirmedMembers) of \(totalMembers) paid")
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    NavigationLink(destination: SettlementView(store: store, roomID: room.id)) {
+                        Text("View Payment Details")
+                    }
+                    
+                    Button(action: { showAdvanceConfirm = true }) {
+                        Text("Close Room & Finish")
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .foregroundColor(allSettled ? .blue : .secondary)
+                    }
+                    .disabled(!allSettled)
+                    
+                    Button(action: { showRollbackConfirm = true }) {
+                        Text("Reopen Claiming")
+                    }
+                    .foregroundColor(.red)
+                    
+                } header: {
+                    Text("Host Settlement Dashboard")
+                } footer: {
+                    Text("Confirm payments from members. Once everyone has paid, close the room.")
+                }
+            } else {
+                let settlement = try? SettlementCalculator.settle(room: room)
+                let memberShare = settlement?.settlement(for: actingID)
+                let totalOwed = memberShare?.totalOwed ?? 0
+                let me = room.member(withID: actingID)
+                
+                Section {
+                    if totalOwed == 0 {
+                        Text("You don't owe any money.")
+                            .foregroundColor(.secondary)
+                    } else {
+                        HStack {
+                            Text("Total Owed")
+                            Spacer()
+                            Text(totalOwed.rupiah)
+                                .foregroundColor(.primary)
+                        }
+                        
+                        if let me {
+                            if me.paymentStatus == .none {
+                                Button(action: { store.markPaid(roomID: room.id) }) {
+                                    Text("I've Paid the Host")
+                                        .frame(maxWidth: .infinity, alignment: .center)
+                                }
+                            } else if me.paymentStatus == .memberMarkedPaid {
+                                HStack {
+                                    ProgressView()
+                                        .padding(.trailing, 8)
+                                    Text("Waiting for confirmation")
+                                        .foregroundColor(.secondary)
+                                }
+                            } else {
+                                HStack {
+                                    Image(systemName: "checkmark.seal.fill")
+                                        .foregroundColor(.green)
+                                    Text("Payment Confirmed")
+                                        .foregroundColor(.primary)
+                                }
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Your Settlement")
+                } footer: {
+                    if totalOwed > 0 {
+                        Text("Please transfer your share to the host.")
+                    }
+                }
+            }
+            
+        case .closed:
+            let settlement = try? SettlementCalculator.settle(room: room)
+            Section {
+                if let grandTotal = settlement?.grandTotal {
+                    HStack {
+                        Text("Grand Total")
+                        Spacer()
+                        Text(grandTotal.rupiah)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                
+                NavigationLink(destination: SettlementView(store: store, roomID: room.id)) {
+                    Text("View Final Summary")
+                }
+            } header: {
+                Text("Room Settled & Closed")
+            } footer: {
+                Text("This split bill session is completed and archived.")
+            }
         }
     }
 
     private func advanceLabel(_ state: RoomState) -> String {
         switch state {
-        case .open: "Start Claiming"
-        case .claiming: "Close Claiming & Settle"
-        case .settling: "Close Room"
-        case .closed: ""
+        case .open: return "Start Claiming"
+        case .claiming: return "Close Claiming & Settle"
+        case .settling: return "Close Room"
+        case .closed: return ""
         }
     }
 
     private func advanceQuestion(_ state: RoomState) -> String {
         switch state {
-        case .open: "Start claiming?"
-        case .claiming: "Close claiming?"
-        case .settling: "Close this room?"
-        case .closed: ""
+        case .open: return "Start claiming?"
+        case .claiming: return "Close claiming?"
+        case .settling: return "Close this room?"
+        case .closed: return ""
         }
     }
 
     private func advanceDetail(_ state: RoomState) -> String {
         switch state {
         case .open:
-            "Members will start claiming their items. You can still add bills and members while claiming."
+            return "Members will start claiming their items. You can still add bills and members while claiming."
         case .claiming:
-            "Tax and service will be split proportionally and everyone sees what they owe. You can reopen claiming later if something's wrong."
+            return "Tax and service will be split proportionally and everyone sees what they owe. You can reopen claiming later if something's wrong."
         case .settling:
-            "Closing is final. The room becomes read-only history."
+            return "Closing is final. The room becomes read-only history."
         case .closed:
-            ""
+            return ""
         }
     }
 
@@ -314,7 +473,7 @@ struct RoomDetailView: View {
         let billsEditable = actingIsHost && room.state == .open
         return Section {
             if room.bills.isEmpty {
-                Text("No bills yet. Scan the receipt with Add Bill below to get started.")
+                Text("No bills yet. Scan the receipt using options above to get started.")
                     .foregroundStyle(.secondary)
             }
             ForEach(room.bills) { bill in
@@ -342,53 +501,182 @@ struct RoomDetailView: View {
             }
         }
     }
+
+    private func claimedSubtotal(room: Room, memberID: UUID) -> Int {
+        let prices = Dictionary(
+            room.bills.flatMap(\.items).map { ($0.id, $0.unitPrice) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        return room.claims(for: memberID)
+            .reduce(Fraction.zero) { $0 + $1.portion * (prices[$1.itemID] ?? 0) }
+            .flooredValue
+    }
 }
+
+// MARK: - Stepper View
+
+private struct RoomProgressStepper: View {
+    let currentState: RoomState
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(RoomState.allCases, id: \.self) { state in
+                let order = state.order
+                let currentOrder = currentState.order
+                let isCompleted = order < currentOrder
+                let isActive = state == currentState
+
+                VStack(spacing: 6) {
+                    ZStack {
+                        Circle()
+                            .fill(isCompleted ? Color.green : (isActive ? state.color : Color(.systemGray5)))
+                            .frame(width: 28, height: 28)
+
+                        if isCompleted {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(.white)
+                        } else {
+                            Image(systemName: state.icon)
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(isActive ? .white : .secondary)
+                        }
+                    }
+
+                    Text(state.title)
+                        .font(.system(size: 10, weight: isActive ? .semibold : .regular))
+                        .foregroundStyle(isActive ? .primary : .secondary)
+                }
+                .frame(maxWidth: .infinity)
+
+                if state != .closed {
+                    let nextIsCompletedOrActive = (order + 1) <= currentOrder
+                    Rectangle()
+                        .fill(nextIsCompletedOrActive ? Color.green : Color(.systemGray4))
+                        .frame(height: 2)
+                        .frame(maxWidth: .infinity)
+                        .offset(y: -9)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - RoomState Extensions
+
+private extension RoomState {
+    var order: Int {
+        switch self {
+        case .open: return 0
+        case .claiming: return 1
+        case .settling: return 2
+        case .closed: return 3
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .open: return "plus.bubble.fill"
+        case .claiming: return "hand.tap.fill"
+        case .settling: return "banknote.fill"
+        case .closed: return "checkmark.seal.fill"
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .open: return "Setup"
+        case .claiming: return "Claiming"
+        case .settling: return "Settling"
+        case .closed: return "Closed"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .open: return .blue
+        case .claiming: return .orange
+        case .settling: return .purple
+        case .closed: return .green
+        }
+    }
+}
+
+// MARK: - Redesigned BillRow View
 
 struct BillRow: View {
     let bill: Bill
     let showsChevron: Bool
 
     var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(bill.merchantName).font(.headline)
-                Text("\(bill.items.count) items · subtotal \(bill.subtotal.rupiah)")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.blue)
+                    .frame(width: 30, height: 30)
+                Image(systemName: "doc.text.fill")
+                    .font(.system(size: 14))
+                    .foregroundColor(.white)
             }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(bill.merchantName)
+                    .font(.body)
+                    .foregroundColor(.primary)
+                Text("\(bill.items.count) items")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer()
+
+            Text(bill.subtotal.rupiah)
+                .font(.body)
+                .foregroundColor(.secondary)
+
             if showsChevron {
-                Spacer()
-                Image(systemName: "chevron.forward")
-                    .font(.footnote.weight(.semibold))
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(.tertiary)
             }
         }
+        .padding(.vertical, 2)
     }
 }
+
+// MARK: - Redesigned MemberRow View
 
 struct MemberRow: View {
     let member: Member
     let roomState: RoomState
 
     var body: some View {
-        HStack {
-            Text(member.avatarEmoji).font(.title3)
-            Text(member.displayName)
-            if member.isHost {
-                Text("HOST")
-                    .font(.caption2.weight(.bold))
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 2)
-                    .background(.tint.opacity(0.15), in: .capsule)
-                    .foregroundStyle(.tint)
+        HStack(spacing: 12) {
+            Text(member.avatarEmoji)
+                .font(.title2)
+                .frame(width: 36, height: 36)
+                .background(Color(.systemGray6), in: Circle())
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(member.displayName)
+                    .font(.body)
+                    .foregroundColor(.primary)
+                Text(member.isHost ? "Room Owner" : "Member")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
+
             Spacer()
-            if roomState == .settling || roomState == .closed, !member.isHost {
+
+            if (roomState == .settling || roomState == .closed) && !member.isHost {
                 PaymentStatusLabel(status: member.paymentStatus)
             }
         }
+        .padding(.vertical, 2)
     }
 }
+
+// MARK: - Redesigned PaymentStatusLabel View
 
 struct PaymentStatusLabel: View {
     let status: PaymentStatus
@@ -396,17 +684,17 @@ struct PaymentStatusLabel: View {
     var body: some View {
         switch status {
         case .none:
-            Text("unpaid")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Text("Unpaid")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
         case .memberMarkedPaid:
-            Label("paid", systemImage: "checkmark")
-                .font(.caption)
-                .foregroundStyle(.orange)
+            Text("Pending")
+                .font(.subheadline)
+                .foregroundColor(.orange)
         case .hostConfirmed:
-            Label("settled", systemImage: "checkmark.seal.fill")
-                .font(.caption)
-                .foregroundStyle(.green)
+            Text("Settled")
+                .font(.subheadline)
+                .foregroundColor(.green)
         }
     }
 }
