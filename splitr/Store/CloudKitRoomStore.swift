@@ -136,6 +136,14 @@ final class CloudKitRoomStore: RoomStoring {
 
     // MARK: - Sharing & push entry points (beyond RoomStoring)
 
+    /// Pre-create hosting check for the Home screen: returns the actionable
+    /// message when this account can't host (quota, managed Apple ID, not
+    /// signed in, …), nil when hosting looks healthy. Joining is unaffected.
+    func hostingIssueMessage() async -> String? {
+        guard let issue = await sync.hostingIssue() else { return nil }
+        return Self.hostingMessage(for: issue, ckCode: nil)
+    }
+
     /// Host-side: the CKShare invitation URL for a room.
     func inviteURL(roomID: UUID) async -> URL? {
         do {

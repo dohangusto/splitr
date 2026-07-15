@@ -63,8 +63,10 @@ struct ClaimingView: View {
         }
         .navigationTitle("Claim Items")
         .navigationBarTitleDisplayMode(.inline)
-        .safeAreaInset(edge: .bottom) {
-            footer(room, actingID: actingID)
+        .toolbar(.hidden, for: .tabBar)
+        .safeAreaBar(edge: .bottom) {
+            runningTotalCard(room, actingID: actingID)
+                .padding(.horizontal)
         }
         .confirmationDialog(
             "Release this shared item?",
@@ -92,7 +94,10 @@ struct ClaimingView: View {
         }
     }
 
-    private func footer(_ room: Room, actingID: UUID) -> some View {
+    /// Persistent info card in the floating layer (`safeAreaBar`), styled
+    /// after the Examples' DemoInfoCard: it informs — every claim action
+    /// stays on the item rows it belongs to.
+    private func runningTotalCard(_ room: Room, actingID: UUID) -> some View {
         let mine = room.claims(for: actingID)
         let subtotal = mine
             .reduce(Fraction.zero) { total, claim in
@@ -103,21 +108,25 @@ struct ClaimingView: View {
                 return total + claim.portion * price
             }
             .flooredValue
-        return HStack {
-            VStack(alignment: .leading, spacing: 1) {
+        return HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "hand.tap")
+                .foregroundStyle(.tint)
+                .font(.title2)
+            VStack(alignment: .leading, spacing: 2) {
                 Text("Your items so far")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Text(subtotal.rupiah)
                     .font(.headline)
             }
-            Spacer()
+            .frame(maxWidth: .infinity, alignment: .leading)
             Text("before tax & service")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
+        .frame(maxWidth: .infinity)
         .padding()
-        .background(.bar)
+        .background(.background, in: RoundedRectangle(cornerRadius: 24))
     }
 }
 

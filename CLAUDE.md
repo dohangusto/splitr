@@ -27,6 +27,20 @@ Payments are tracking-only. No payment gateway integration, ever.
 - **Identity**: members are represented by a display name + emoji avatar entered at join time, with a host-assigned unique ID. Never depend on Apple ID for displayed identity.
 - **No SwiftData–CloudKit sync** ("Host in CloudKit" is off; storage was created as None). Domain models are plain Swift types in SplitBillCore, mapped to/from CKRecord in SplitBillSync. Local-only persistence (drafts, history cache) may be added later without CloudKit mirroring.
 - **App Clip is a stretch goal** (guest join → claim → view total). It shapes the module structure now, but no App Clip target work until milestone 6.
+- **No `CKSyncEngine`.** Rejected deliberately: it hides per-record save policies, and we require compare-and-swap (`.ifServerRecordUnchanged`) on claim writes so a lost race returns `serverRecordChanged`. We map records ourselves.
+
+## Hard-won constraints (learned on-device — do not undo)
+
+These cost real debugging time. Changing any of them breaks live behavior that hermetic tests will not catch.
+
+- **`CKShare.publicPermission` must be `.readWrite`, set before the share is saved.** Our model is link-based: anyone with the invite link joins as a member; we do not pre-invite specific Apple IDs. CloudKit defaults this to `.none`, which makes every link tap fail with "The owner stopped sharing, or your account doesn't have permission to open it".
+- **Only produce the invite URL after the share's save to the server has confirmed.** A URL read from an unsaved share points at a share the server doesn't have.
+- **Share acceptance lives on `UIWindowSceneDelegate.windowScene(_:userDidAcceptCloudKitShareWith:)`**, not the app delegate. In a SwiftUI `WindowGroup` app the app-delegate variant is never called; the symptom is a silent no-op after Accept.
+- **Hosting requires a healthy iCloud account; joining does not.** Creating a room writes a custom zone to the user's own private database (their quota, their account restrictions); joining reads/writes a zone owned by the host. A user who cannot host can still join perfectly well — **a hosting failure must never block joining**, and the two failures must never share one message.
+- **Never swallow a `CKError` behind generic copy.** Always surface the real `CKError.Code` (and `CKAccountStatus` where relevant) with actionable per-case messaging — quota full, managed/restricted account, not signed in, temporarily unavailable, network.
+- **Never leave a phantom local-only room** when a room fails to sync. Either don't create it, or mark it failed with a retry — never let it look real.
+- **The NI/MPC channel carries exactly three messages**: NI discovery token, joiner identity (name + emoji), and the host's invitation (CKShare URL + host-assigned member UUID). It is not a state channel; room state only ever flows through CloudKit.
+- **One host "add people nearby" session serves many joiners sequentially.** The MPC advertiser stays up while the room is `open` or `claiming`; completing a join tears down only that joiner's NI ranging and peer connection — never the advertiser or other peers.
 
 ## Module structure (SPM local packages)
 
@@ -50,20 +64,21 @@ Settlement math lives in Core as pure functions: per-member subtotal → proport
 ## Tech conventions
 
 - Swift 6, SwiftUI, `@Observable` view models (no Combine-era ObservableObject unless required).
-- Swift Testing (`import Testing`, `#expect`) — not XCTest — for new tests.
+- Swift Testing (`import Testing`, `#expect`) — not XCTest — for any test that is written.
+- **Tests are optional and targeted, not a default deliverable.** Do not blanket-test every new type, and do not treat "add tests" as an automatic part of a task. Write a test only where it earns its keep: pure logic where correctness is not obvious by reading (settlement math, the room state machine and claiming rules, record round-trip mapping, receipt parsing, the tap-to-join detector), and regressions for bugs we actually hit. Skip tests for view code, thin wrappers, glue, and anything requiring hardware or a live network. If unsure whether a test is warranted, ask rather than writing it. Existing tests must keep passing.
 - Strict concurrency; domain models are `Sendable`.
 - English UI copy. Currency formatted as IDR (Rp), no decimal places.
 - Money is `Int` rupiah (never floating point).
 - **No XCUITest / UI automation tests.** Verify behavior with Swift Testing unit tests (including against the `RoomStore` and other app-layer types by calling intent methods directly) and console/logic-level checks. UI tests are too slow and flaky for this project's timeline.
 - **Never run `git commit`, `git push`, or any git write operation.** Do not stage files. The developer handles all git operations manually. When you reach a stable, reviewable point (e.g. models done, tests passing), say so explicitly — "This is a good commit point: <suggested message>" — and continue or stop as instructed.
 
-## Required Info.plist entries (add when the relevant feature lands, not before)
+## Project configuration (already in place — verify, don't re-add)
 
-- `NSCameraUsageDescription` — receipt scanning (milestone 3)
-- `NSNearbyInteractionUsageDescription` — proximity join (milestone 5)
-- `NSLocalNetworkUsageDescription` + `NSBonjourServices` — MultipeerConnectivity (milestone 5)
+Capabilities: iCloud → CloudKit (container `iCloud.com.c4.splitr`), Push Notifications, Background Modes → **Remote notifications only** (the "Uses Nearby Interaction" background mode is deliberately off — joining happens in the foreground).
 
-Capabilities already configured in the project: iCloud → CloudKit (container `iCloud.com.c4.splitr`), Push Notifications, Background Modes → Remote notifications.
+Info.plist: `CKSharingSupported`, `NSCameraUsageDescription`, `NSNearbyInteractionUsageDescription`, `NSLocalNetworkUsageDescription`, `NSBonjourServices` (`_splitr-join._tcp`, `_splitr-join._udp` — must match the MPC service type `splitr-join`).
+
+Never edit capability or entitlement config directly. If something must change, report exactly what and the developer will do it in Xcode. Assume Xcode is closed while you work.
 
 ## Milestones
 
@@ -85,3 +100,7 @@ Do not start a milestone early. Simulator suffices for 1–3; milestones 4–5 n
 - Add third-party dependencies without asking.
 - Run `git commit` / `git push` / stage files — git is developer-only.
 - Write or run XCUITest / UI automation — use `RoomStore`-level unit tests instead.
+- Add tests reflexively — see the testing rule above; they are targeted, not automatic.
+- Swallow a `CKError` behind generic copy, or let a hosting failure block joining.
+- Send anything but the three defined join messages over NI/MPC.
+- Edit capabilities, entitlements, or the pbxproj config yourself.

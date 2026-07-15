@@ -43,13 +43,15 @@ struct ReceiptScanFlow: View {
                     Label("Couldn't read that", systemImage: "doc.viewfinder")
                 } description: {
                     Text(message)
-                } actions: {
-                    Button("Try Again") { phase = .pickSource }
-                        .buttonStyle(.borderedProminent)
                 }
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Cancel") { dismiss() }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Try Again") {
+                            phase = .pickSource
+                        }
                     }
                 }
             }

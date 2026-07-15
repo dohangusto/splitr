@@ -7,8 +7,8 @@ struct CreateRoomView: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var roomName = ""
-    @State private var hostName = ""
-    @State private var emoji = "🧑‍🍳"
+    @State private var hostName = UserDefaults.standard.string(forKey: "splitr.user_display_name") ?? ""
+    @State private var emoji = UserDefaults.standard.string(forKey: "splitr.user_avatar_emoji") ?? "🧑‍🍳"
 
     var body: some View {
         NavigationStack {
@@ -29,9 +29,12 @@ struct CreateRoomView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Create") {
+                        let trimmedHostName = hostName.trimmingCharacters(in: .whitespaces)
+                        UserDefaults.standard.set(trimmedHostName, forKey: "splitr.user_display_name")
+                        UserDefaults.standard.set(emoji, forKey: "splitr.user_avatar_emoji")
                         store.createRoom(
                             named: roomName.trimmingCharacters(in: .whitespaces),
-                            hostName: hostName.trimmingCharacters(in: .whitespaces),
+                            hostName: trimmedHostName,
                             hostEmoji: emoji
                         )
                         dismiss()

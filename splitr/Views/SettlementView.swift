@@ -31,10 +31,14 @@ struct SettlementView: View {
                 Label("Items still unclaimed", systemImage: "exclamationmark.triangle")
             } description: {
                 Text("\(unclaimedCount) item\(unclaimedCount == 1 ? "" : "s") have no owner. Reopen claiming so members can claim them, or assign them yourself.")
-            } actions: {
+            }
+            .toolbar {
                 if actingIsHost, room.state == .settling {
-                    Button("Reopen Claiming") { store.rollbackToClaiming(roomID: roomID) }
-                        .buttonStyle(.borderedProminent)
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Reopen Claiming", systemImage: "arrow.uturn.backward.circle") {
+                            store.rollbackToClaiming(roomID: roomID)
+                        }
+                    }
                 }
             }
         case .success(let settlement):
@@ -50,13 +54,12 @@ struct SettlementView: View {
                         )
                     }
                 }
-                totalsSection(settlement)
-                if !readOnly, actingIsHost {
-                    closeSection(room)
-                }
+                totalsSection(settlement, room: room, readOnly: readOnly)
             }
             .navigationTitle(readOnly ? "Final Summary" : "Settlement")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .tabBar)
+            .toolbar { settlementToolbar(room, actingID: actingID, readOnly: readOnly) }
             .confirmationDialog(
                 "Close this room?",
                 isPresented: $showCloseConfirm,
@@ -86,6 +89,39 @@ struct SettlementView: View {
                 .count
             return .failure(unclaimedCount: max(unclaimed, 1))
         }
+    }
+
+    // MARK: - Toolbar
+
+    /// Settlement's own actions, in the top toolbar: the acting member's
+    /// "I've Paid" and the host's final "Close Room". Per-member confirms
+    /// stay on the member rows they belong to.
+    @ToolbarContentBuilder
+    private func settlementToolbar(_ room: Room, actingID: UUID, readOnly: Bool) -> some ToolbarContent {
+        if !readOnly {
+            if let acting = room.member(withID: actingID),
+               !acting.isHost, acting.paymentStatus == .none {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("I've Paid") {
+                        store.markPaid(roomID: roomID)
+                    }
+                }
+            }
+            if actingIsHost {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Close Room") {
+                        showCloseConfirm = true
+                    }
+                    .disabled(!allConfirmed(room))
+                }
+            }
+        }
+    }
+
+    private func allConfirmed(_ room: Room) -> Bool {
+        room.members
+            .filter { !$0.isHost }
+            .allSatisfy { $0.paymentStatus == .hostConfirmed }
     }
 
     // MARK: - Sections
@@ -120,6 +156,9 @@ struct SettlementView: View {
         }
     }
 
+    /// The acting member's own "I've Paid" lives in the bottom toolbar;
+    /// the host's per-member confirm stays here because it is contextual
+    /// to this row (one control per member).
     @ViewBuilder
     private func paymentRow(member: Member, room: Room, actingID: UUID, readOnly: Bool) -> some View {
         HStack(spacing: 12) {
@@ -132,17 +171,10 @@ struct SettlementView: View {
                 label: "Received"
             )
             Spacer()
-            if !readOnly {
-                if member.id == actingID, member.paymentStatus == .none {
-                    Button("I've paid") { store.markPaid(roomID: roomID) }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
-                }
-                if actingIsHost, member.paymentStatus != .hostConfirmed {
-                    Button("Confirm received") { store.confirmPayment(of: member.id, roomID: roomID) }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                }
+            if !readOnly, actingIsHost, member.paymentStatus != .hostConfirmed {
+                Button("Confirm received") { store.confirmPayment(of: member.id, roomID: roomID) }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
             }
         }
     }
@@ -153,8 +185,8 @@ struct SettlementView: View {
             .foregroundStyle(done ? .green : .secondary)
     }
 
-    private func totalsSection(_ settlement: Settlement) -> some View {
-        Section("Bill total") {
+    private func totalsSection(_ settlement: Settlement, room: Room, readOnly: Bool) -> some View {
+        Section {
             LabeledContent("Subtotal") { Text(settlement.billSubtotal.rupiah) }
             LabeledContent("Tax (PB1)") { Text(settlement.taxTotal.rupiah) }
             LabeledContent("Service") { Text(settlement.serviceTotal.rupiah) }
@@ -168,22 +200,10 @@ struct SettlementView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-        }
-    }
-
-    private func closeSection(_ room: Room) -> some View {
-        let allConfirmed = room.members
-            .filter { !$0.isHost }
-            .allSatisfy { $0.paymentStatus == .hostConfirmed }
-        return Section {
-            Button {
-                showCloseConfirm = true
-            } label: {
-                Label("Close Room", systemImage: "lock")
-            }
-            .disabled(!allConfirmed)
+        } header: {
+            Text("Bill total")
         } footer: {
-            if !allConfirmed {
+            if !readOnly, actingIsHost, !allConfirmed(room) {
                 Text("You can close the room once every member's payment is confirmed.")
             }
         }

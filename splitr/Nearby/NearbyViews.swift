@@ -30,11 +30,11 @@ struct ProximityRingView: View {
 }
 
 /// Shared status layout for both sides of the proximity join flow.
+/// Pure content layer: it only *shows* the phase — retry/fallback actions
+/// live in the presenting screen's toolbar.
 private struct ProximityPhaseView: View {
     let phase: ProximityJoinCoordinator.Phase
     let waitingText: String
-    let onRetry: () -> Void
-    let onUseLink: (() -> Void)?
 
     var body: some View {
         VStack(spacing: 12) {
@@ -81,11 +81,6 @@ private struct ProximityPhaseView: View {
                 Text(reason.message)
                     .font(.subheadline)
                     .multilineTextAlignment(.center)
-                Button("Try Again", action: onRetry)
-                    .buttonStyle(.borderedProminent)
-                if let onUseLink {
-                    Button("Use Invite Link Instead", action: onUseLink)
-                }
             }
         }
         .padding()
@@ -111,11 +106,7 @@ struct NearbyHostView: View {
                 if let coordinator {
                     ProximityPhaseView(
                         phase: coordinator.phase,
-                        waitingText: "Waiting for a friend's iPhone…",
-                        onRetry: { restart(coordinator) },
-                        onUseLink: onUseLink.map { useLink in
-                            { dismiss(); useLink() }
-                        }
+                        waitingText: "Waiting for a friend's iPhone…"
                     )
                     if let peer = coordinator.connectedPeerName,
                        case .ranging = coordinator.phase {
@@ -146,6 +137,20 @@ struct NearbyHostView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
                 }
+                // Failure recovery lives in the tools layer, not the content.
+                if let coordinator, case .failed = coordinator.phase {
+                    ToolbarItemGroup(placement: .topBarTrailing) {
+                        if let onUseLink {
+                            Button("Use Invite Link", systemImage: "link") {
+                                dismiss()
+                                onUseLink()
+                            }
+                        }
+                        Button("Try Again", systemImage: "arrow.clockwise") {
+                            restart(coordinator)
+                        }
+                    }
+                }
             }
             .sensoryFeedback(.success, trigger: coordinator?.gestureFires ?? 0)
             .onAppear {
@@ -168,72 +173,177 @@ struct NearbyHostView: View {
 }
 
 /// Joiner side: pick a name + emoji, then the proximity gesture.
+/// The invite link is the standing fallback: reachable from the form for
+/// non-UWB devices, and offered on every proximity failure state.
 struct NearbyJoinView: View {
     let store: CloudKitRoomStore
 
     @Environment(\.dismiss) private var dismiss
     @State private var coordinator: ProximityJoinCoordinator?
-    @State private var name = ""
-    @State private var emoji = "🙂"
+    @State private var name = UserDefaults.standard.string(forKey: "splitr.user_display_name") ?? ""
+    @State private var emoji = UserDefaults.standard.string(forKey: "splitr.user_avatar_emoji") ?? "🙂"
     @State private var started = false
+    @State private var showLinkEntry = false
 
     var body: some View {
         NavigationStack {
             Group {
                 if let coordinator, started {
-                    VStack {
-                        ProximityPhaseView(
-                            phase: coordinator.phase,
-                            waitingText: "Looking for a host nearby…",
-                            onRetry: {
-                                coordinator.stop()
-                                coordinator.startJoining(displayName: name, avatarEmoji: emoji)
-                            },
-                            onUseLink: nil // joiner fallback: host sends the link
-                        )
-                        if case .joined = coordinator.phase {
-                            Button("Open the Room") { dismiss() }
-                                .buttonStyle(.borderedProminent)
-                        }
-                    }
+                    ProximityPhaseView(
+                        phase: coordinator.phase,
+                        waitingText: "Looking for a host nearby…"
+                    )
                 } else {
                     Form {
-                        Section("You") {
+                        Section {
                             TextField("Display name", text: $name)
                             EmojiPicker(selection: $emoji)
-                        }
-                        Section {
-                            Button {
-                                start()
-                            } label: {
-                                Label("Find the Host", systemImage: "iphone.radiowaves.left.and.right")
-                            }
-                            .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                        } header: {
+                            Text("You")
                         } footer: {
-                            Text("Then bring your iPhone close to the host's iPhone to join.")
+                            Text("Tap Find the Host below, then bring your iPhone close to the host's iPhone to join. If your friend sent a link in Messages, just tap it there — it opens splitr directly.")
                         }
                     }
                 }
             }
             .navigationTitle("Join Nearby")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
+            .toolbar { joinToolbar }
+            .sheet(isPresented: $showLinkEntry) {
+                JoinViaLinkView(store: store)
             }
             .sensoryFeedback(.success, trigger: coordinator?.gestureFires ?? 0)
             .onDisappear { coordinator?.stop() }
         }
     }
 
+    /// Phase-dependent actions in the top toolbar: find/retry/fallback while
+    /// joining, the confirm once joined. Content below only shows status.
+    @ToolbarContentBuilder
+    private var joinToolbar: some ToolbarContent {
+        ToolbarItem(placement: .cancellationAction) {
+            Button("Cancel") { dismiss() }
+        }
+        if let coordinator, started {
+            switch coordinator.phase {
+            case .failed:
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button("Use Invite Link", systemImage: "link") {
+                        coordinator.stop()
+                        showLinkEntry = true
+                    }
+                    Button("Try Again", systemImage: "arrow.clockwise") {
+                        coordinator.stop()
+                        coordinator.startJoining(displayName: name, avatarEmoji: emoji)
+                    }
+                }
+            case .joined:
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Open the Room") {
+                        dismiss()
+                    }
+                }
+            default:
+                // Searching/ranging: nothing to act on; Cancel is enough.
+                ToolbarItem(placement: .automatic) { EmptyView() }
+            }
+        } else {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Join with an Invite Link", systemImage: "link") {
+                    showLinkEntry = true
+                }
+            }
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Find the Host") {
+                    start()
+                }
+                .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+    }
+
     private func start() {
+        let trimmedName = name.trimmingCharacters(in: .whitespaces)
+        UserDefaults.standard.set(trimmedName, forKey: "splitr.user_display_name")
+        UserDefaults.standard.set(emoji, forKey: "splitr.user_avatar_emoji")
+
         let coordinator = ProximityJoinCoordinator(store: store)
         self.coordinator = coordinator
         started = true
         coordinator.startJoining(
-            displayName: name.trimmingCharacters(in: .whitespaces),
+            displayName: trimmedName,
             avatarEmoji: emoji
         )
+    }
+}
+
+/// Manual invite-link entry: the escape hatch for non-UWB devices and for
+/// any proximity failure. Accepting the pasted CKShare URL goes through the
+/// exact same path as tapping the link in Messages.
+struct JoinViaLinkView: View {
+    let store: CloudKitRoomStore
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var linkText = ""
+    @State private var isJoining = false
+    @State private var errorMessage: String?
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Paste the invite link", text: $linkText)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .keyboardType(.URL)
+                } footer: {
+                    if let errorMessage {
+                        Text(errorMessage)
+                            .foregroundStyle(.red)
+                    } else {
+                        Text("Ask the host to send the room's invite link (it starts with icloud.com), then paste it here.")
+                    }
+                }
+            }
+            .navigationTitle("Join via Link")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                        .disabled(isJoining)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    if isJoining {
+                        ProgressView()
+                    } else {
+                        Button("Join") { join() }
+                            .disabled(linkText.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium])
+        .interactiveDismissDisabled(isJoining)
+    }
+
+    private func join() {
+        let trimmed = linkText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: trimmed), url.host() != nil else {
+            errorMessage = "That doesn't look like a link. Paste the full invite link from the host."
+            return
+        }
+        errorMessage = nil
+        isJoining = true
+        Task {
+            let joined = await store.acceptShare(from: url)
+            isJoining = false
+            if joined {
+                dismiss()
+            } else {
+                // acceptShare also raises the store alert; keep the inline
+                // copy here so the failure is visible without leaving the sheet.
+                errorMessage = "Couldn't join with that link. Ask the host for a fresh one."
+            }
+        }
     }
 }

@@ -40,6 +40,10 @@ struct RoomDetailView: View {
         }
         .navigationTitle(room.name)
         .navigationBarTitleDisplayMode(.inline)
+        // Detail screen owns its chrome: Home's tab bar steps aside so the
+        // room's own bottom-bar actions are the only floating layer.
+        .toolbar(.hidden, for: .tabBar)
+        .toolbar { detailToolbar(room) }
         .sheet(isPresented: $showAddBill) {
             AddBillView(store: store, roomID: roomID)
         }
@@ -93,6 +97,69 @@ struct RoomDetailView: View {
                 },
                 secondaryButton: .cancel()
             )
+        }
+    }
+
+    /// All room actions live in the top toolbar, clustered at trailing like
+    /// the Examples' `principalTrailingItems` — the content list only
+    /// informs and navigates. Add-people and add-bill are menus; advancing
+    /// the state machine is the last (primary) item.
+    @ToolbarContentBuilder
+    private func detailToolbar(_ room: Room) -> some ToolbarContent {
+        if room.state == .open || room.state == .claiming {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Menu {
+                    if actingIsHost, AppComposition.cloudStore != nil {
+                        Button {
+                            showNearbyHost = true
+                        } label: {
+                            Label("Add People Nearby", systemImage: "iphone.radiowaves.left.and.right")
+                        }
+                        Button {
+                            fetchInviteURL()
+                        } label: {
+                            Label("Invite via iCloud Link", systemImage: "link.badge.plus")
+                        }
+                    }
+                    Button {
+                        showJoinMember = true
+                    } label: {
+                        Label("Add Member Manually", systemImage: "keyboard")
+                    }
+                } label: {
+                    Label("Add People", systemImage: "person.badge.plus")
+                }
+                if actingIsHost {
+                    Menu {
+                        Button {
+                            showScanReceipt = true
+                        } label: {
+                            Label("Scan Receipt", systemImage: "doc.viewfinder")
+                        }
+                        Button {
+                            showAddBill = true
+                        } label: {
+                            Label("Enter Bill Manually", systemImage: "keyboard")
+                        }
+                    } label: {
+                        Label("Add Bill", systemImage: "doc.badge.plus")
+                    }
+                }
+            }
+            if actingIsHost {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(advanceLabel(room.state), systemImage: "arrow.forward.circle") {
+                        showAdvanceConfirm = true
+                    }
+                }
+            }
+        }
+        if actingIsHost, room.state == .settling {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Reopen Claiming", systemImage: "arrow.uturn.backward.circle") {
+                    showRollbackConfirm = true
+                }
+            }
         }
     }
 
@@ -153,20 +220,6 @@ struct RoomDetailView: View {
                 }
             }
 
-            if actingIsHost, room.state != .closed, room.state != .settling {
-                Button {
-                    showAdvanceConfirm = true
-                } label: {
-                    Label(advanceLabel(room.state), systemImage: "arrow.forward.circle")
-                }
-            }
-            if actingIsHost, room.state == .settling {
-                Button {
-                    showRollbackConfirm = true
-                } label: {
-                    Label("Reopen Claiming", systemImage: "arrow.uturn.backward.circle")
-                }
-            }
         }
     }
 
@@ -227,25 +280,6 @@ struct RoomDetailView: View {
                         }
                     }
             }
-            if room.state == .open || room.state == .claiming {
-                Button {
-                    showJoinMember = true
-                } label: {
-                    Label("Add Member", systemImage: "person.badge.plus")
-                }
-                if actingIsHost, AppComposition.cloudStore != nil {
-                    Button {
-                        showNearbyHost = true
-                    } label: {
-                        Label("Add People Nearby", systemImage: "iphone.radiowaves.left.and.right")
-                    }
-                    Button {
-                        fetchInviteURL()
-                    } label: {
-                        Label("Invite via iCloud Link", systemImage: "link.badge.plus")
-                    }
-                }
-            }
         } header: {
             Text("Members")
         } footer: {
@@ -260,7 +294,7 @@ struct RoomDetailView: View {
     private func billsSection(_ room: Room) -> some View {
         Section("Bills") {
             if room.bills.isEmpty {
-                Text("No bills yet. Add the receipt to get started.")
+                Text("No bills yet. Scan the receipt with Add Bill below to get started.")
                     .foregroundStyle(.secondary)
             }
             ForEach(room.bills) { bill in
@@ -269,18 +303,6 @@ struct RoomDetailView: View {
                     Text("\(bill.items.count) items · subtotal \(bill.subtotal.rupiah)")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                }
-            }
-            if actingIsHost, room.state == .open || room.state == .claiming {
-                Button {
-                    showScanReceipt = true
-                } label: {
-                    Label("Scan Receipt", systemImage: "doc.viewfinder")
-                }
-                Button {
-                    showAddBill = true
-                } label: {
-                    Label("Enter Bill Manually", systemImage: "doc.badge.plus")
                 }
             }
         }
