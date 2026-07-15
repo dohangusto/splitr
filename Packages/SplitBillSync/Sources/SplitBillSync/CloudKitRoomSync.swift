@@ -1,5 +1,6 @@
 import CloudKit
 import Foundation
+import OSLog
 import SplitBillCore
 
 /// CloudKit implementation of `RoomSyncService`.
@@ -123,14 +124,89 @@ public actor CloudKitRoomSync: RoomSyncService {
 
     // MARK: - Save
 
+    /// Preflight: can this account host at all? Quota problems only show up
+    /// on write, but signed-out / managed / degraded accounts fail here.
+    public func hostingIssue() async -> HostingIssue? {
+        do {
+            let status = try await container.accountStatus()
+            Self.logger.info("hosting preflight: accountStatus=\(status.rawValue)")
+            switch status {
+            case .available:
+                return nil
+            case .noAccount:
+                return .notSignedIn
+            case .restricted:
+                return .managedAccount
+            case .temporarilyUnavailable:
+                return .temporarilyUnavailable
+            case .couldNotDetermine:
+                return nil // let the write attempt produce the real error
+            @unknown default:
+                return nil
+            }
+        } catch {
+            Self.logger.error("hosting preflight failed: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
     public func create(room: Room) async throws {
         let zoneID = CKRecordZone.ID(zoneName: RecordSchema.zoneName(roomID: room.id), ownerName: CKCurrentUserDefaultName)
-        _ = try await privateDB.modifyRecordZones(saving: [CKRecordZone(zoneID: zoneID)], deleting: [])
-        zoneDatabase[zoneID] = privateDB
-        let records = RecordMapper.records(for: room, zoneID: zoneID)
-        let results = try await privateDB.modifyRecords(saving: records, deleting: [], savePolicy: .ifServerRecordUnchanged, atomically: true)
-        try cache(saveResults: results.saveResults, zoneID: zoneID)
+        do {
+            _ = try await privateDB.modifyRecordZones(saving: [CKRecordZone(zoneID: zoneID)], deleting: [])
+            zoneDatabase[zoneID] = privateDB
+            let records = RecordMapper.records(for: room, zoneID: zoneID)
+            let results = try await privateDB.modifyRecords(saving: records, deleting: [], savePolicy: .ifServerRecordUnchanged, atomically: true)
+            try cache(saveResults: results.saveResults, zoneID: zoneID)
+        } catch {
+            let status = (try? await container.accountStatus()).map { "\($0.rawValue)" } ?? "?"
+            Self.logger.error("create room failed (accountStatus=\(status)): \(Self.describe(error))")
+            if let (issue, code) = Self.hostingIssue(from: error) {
+                throw SyncError.hostingFailed(issue, ckCode: code)
+            }
+            throw SyncError.underlying(error)
+        }
     }
+
+    /// Maps a create-room failure to an account-level hosting issue.
+    /// Unwraps partial-failure containers to find the real per-record code.
+    static func hostingIssue(from error: Error) -> (HostingIssue, Int?)? {
+        guard let ckError = deepestCKError(error) else { return nil }
+        let code = ckError.code.rawValue
+        switch ckError.code {
+        case .quotaExceeded:
+            return (.quotaExceeded, code)
+        case .managedAccountRestricted, .permissionFailure:
+            return (.managedAccount, code)
+        case .notAuthenticated:
+            return (.notSignedIn, code)
+        case .accountTemporarilyUnavailable, .serviceUnavailable, .requestRateLimited, .zoneBusy:
+            return (.temporarilyUnavailable, code)
+        case .networkUnavailable, .networkFailure:
+            return (.network, code)
+        default:
+            return (.unknown(String(describing: ckError.code)), code)
+        }
+    }
+
+    private static func deepestCKError(_ error: Error) -> CKError? {
+        guard let ckError = error as? CKError else { return nil }
+        if let partial = ckError.partialErrorsByItemID?.values
+            .compactMap({ $0 as? CKError })
+            .first(where: { $0.code != .batchRequestFailed }) {
+            return partial
+        }
+        return ckError
+    }
+
+    private static func describe(_ error: Error) -> String {
+        if let ckError = deepestCKError(error) {
+            return "CKError \(ckError.code.rawValue) (\(String(describing: ckError.code))): \(ckError.localizedDescription)"
+        }
+        return error.localizedDescription
+    }
+
+    private static let logger = Logger(subsystem: "com.c4.splitr", category: "CloudKitSync")
 
     /// Non-claim intents: diff the mutated room against the cached server
     /// records, save changed records, delete removed ones. Any race throws
@@ -250,6 +326,11 @@ public actor CloudKitRoomSync: RoomSyncService {
             throw SyncError.underlying(CKError(.internalError))
         }
         return url
+    }
+
+    public func acceptShare(from url: URL) async throws {
+        let metadata = try await container.shareMetadata(for: url)
+        try await acceptShare(metadata: metadata)
     }
 
     public func acceptShare(metadata: CKShare.Metadata) async throws {

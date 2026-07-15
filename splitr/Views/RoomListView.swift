@@ -6,6 +6,7 @@ struct RoomListView: View {
     let store: any RoomStoring
 
     @State private var showCreateRoom = false
+    @State private var showJoinNearby = false
     @State private var showHistory = false
 
     private var activeRooms: [Room] { store.rooms.filter { $0.state != .closed } }
@@ -57,12 +58,24 @@ struct RoomListView: View {
                         showCreateRoom = true
                     }
                 }
+                if AppComposition.cloudStore != nil {
+                    ToolbarItem(placement: .secondaryAction) {
+                        Button("Join Nearby", systemImage: "iphone.radiowaves.left.and.right") {
+                            showJoinNearby = true
+                        }
+                    }
+                }
             }
             .navigationDestination(for: UUID.self) { roomID in
                 RoomDetailView(store: store, roomID: roomID)
             }
             .sheet(isPresented: $showCreateRoom) {
                 CreateRoomView(store: store)
+            }
+            .sheet(isPresented: $showJoinNearby) {
+                if let cloudStore = AppComposition.cloudStore {
+                    NearbyJoinView(store: cloudStore)
+                }
             }
             .alert(
                 "Can't do that",

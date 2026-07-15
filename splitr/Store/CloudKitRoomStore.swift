@@ -68,7 +68,15 @@ final class CloudKitRoomStore: RoomStoring {
         let host = Member(displayName: hostName, avatarEmoji: hostEmoji, isHost: true)
         let room = Room(name: name, host: host)
         rooms.insert(room, at: 0)
-        push { [sync] in try await sync.create(room: room) }
+        // If the create can't reach CloudKit, the local room is removed
+        // again (no phantom local-only rooms) and the alert says exactly
+        // why — hosting failures never block joining someone else's room.
+        push(removingOnFailure: room.id) { [sync] in
+            if let issue = await sync.hostingIssue() {
+                throw SyncError.hostingFailed(issue, ckCode: nil)
+            }
+            try await sync.create(room: room)
+        }
         return room
     }
 
@@ -138,6 +146,39 @@ final class CloudKitRoomStore: RoomStoring {
         }
     }
 
+    /// Host-side (proximity join): adds a member with a host-assigned ID.
+    /// Room state still flows only through CloudKit — this is a normal
+    /// member-record write, not a peer-to-peer state path.
+    func addMember(_ member: Member, roomID: UUID) {
+        mutate(roomID) { room, _ in
+            try room.join(member)
+        }
+    }
+
+    /// Member-side (proximity join): accepts the CKShare from its URL —
+    /// the same acceptance path as tapping an invite link.
+    @discardableResult
+    func acceptShare(from url: URL) async -> Bool {
+        do {
+            try await sync.acceptShare(from: url)
+            return true
+        } catch {
+            alert = StoreAlert(message: "Couldn't join that room. Ask the host for a new invite link.")
+            return false
+        }
+    }
+
+    /// Waits (with periodic refetches) until a just-joined room syncs in.
+    func waitForRoom(id: UUID, timeout: TimeInterval = 30) async -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if room(withID: id) != nil { return true }
+            _ = await sync.fetchRemoteChanges()
+            try? await Task.sleep(for: .milliseconds(700))
+        }
+        return room(withID: id) != nil
+    }
+
     /// Member-side: called when the app opens a CKShare invitation.
     func acceptShare(metadata: ShareMetadata) async {
         do {
@@ -184,12 +225,20 @@ final class CloudKitRoomStore: RoomStoring {
         }
     }
 
-    private func push(_ operation: @escaping @Sendable () async throws -> Void) {
+    private func push(
+        removingOnFailure roomID: UUID? = nil,
+        _ operation: @escaping @Sendable () async throws -> Void
+    ) {
         let task = Task { [weak self] in
             do {
                 try await operation()
             } catch {
-                await MainActor.run { self?.handlePersistError(error) }
+                await MainActor.run {
+                    if let roomID {
+                        self?.rooms.removeAll { $0.id == roomID }
+                    }
+                    self?.handlePersistError(error)
+                }
             }
         }
         pendingPushes.append(task)
@@ -210,9 +259,33 @@ final class CloudKitRoomStore: RoomStoring {
             alert = StoreAlert(message: "Someone else changed the room — it's been refreshed.")
         case SyncError.notSignedIn:
             alert = StoreAlert(message: "Sign in to iCloud in Settings to sync this room.")
+        case SyncError.hostingFailed(let issue, let ckCode):
+            alert = StoreAlert(message: Self.hostingMessage(for: issue, ckCode: ckCode))
         default:
             alert = StoreAlert(message: "Couldn't sync that change. It will show only on this device.")
         }
+    }
+
+    /// Actionable copy per hosting failure. All of these users can still
+    /// JOIN rooms, so the copy always points there. The CKError code is
+    /// appended so failures are diagnosable during on-device testing.
+    static func hostingMessage(for issue: HostingIssue, ckCode: Int?) -> String {
+        let body = switch issue {
+        case .quotaExceeded:
+            "Your iCloud storage is full, so this room can't be hosted. Free up space in Settings → iCloud, or join a room someone else hosts."
+        case .managedAccount:
+            "This Apple ID is managed by a school or organization and can't host shared rooms. You can still join rooms someone else hosts."
+        case .notSignedIn:
+            "Sign in to iCloud in Settings to host rooms. You can still join rooms via an invite."
+        case .temporarilyUnavailable:
+            "iCloud is temporarily unavailable for your account. Wait a minute and try creating the room again."
+        case .network:
+            "No internet connection. Connect and try creating the room again."
+        case .unknown(let codeDescription):
+            "Couldn't create the room (CloudKit: \(codeDescription)). You can still join rooms someone else hosts."
+        }
+        guard let ckCode else { return body }
+        return body + " [CKError \(ckCode)]"
     }
 
     private func reconcile(_ serverRoom: Room) {

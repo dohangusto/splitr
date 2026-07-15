@@ -29,6 +29,11 @@ final class FakeSyncService: RoomSyncService, @unchecked Sendable {
         if let bootstrapError { throw bootstrapError }
     }
 
+    /// Scripted preflight result for hosting-failure tests.
+    var hostingIssueToReport: HostingIssue?
+
+    func hostingIssue() async -> HostingIssue? { hostingIssueToReport }
+
     func fetchRooms() async throws -> [Room] { initialRooms }
 
     func create(room: Room) async throws { pushedRooms.append(room) }
@@ -48,6 +53,8 @@ final class FakeSyncService: RoomSyncService, @unchecked Sendable {
     }
 
     func acceptShare(metadata: ShareMetadata) async throws {}
+
+    func acceptShare(from url: URL) async throws {}
 
     func fetchRemoteChanges() async -> Bool { false }
 }
@@ -143,6 +150,37 @@ struct CloudKitRoomStoreTests {
 
         #expect(store.room(withID: room.id)?
             .bill(withID: billID)?.item(withID: itemID)?.claimState.claimerIDs == [ditaID])
+    }
+
+    @Test("Failed room creation removes the phantom room and explains why")
+    func createFailureIsNonDestructive() async throws {
+        let fake = FakeSyncService()
+        fake.hostingIssueToReport = .quotaExceeded
+        let store = CloudKitRoomStore(sync: fake)
+        try await Task.sleep(for: .milliseconds(50))
+
+        let room = store.createRoom(named: "Doomed", hostName: "Hosty", hostEmoji: "🧑‍🍳")
+        // Optimistically present…
+        #expect(store.room(withID: room.id) != nil)
+        await store.waitForPushes()
+        // …but removed once the hosting preflight fails: no phantom room.
+        #expect(store.room(withID: room.id) == nil)
+        #expect(store.alert?.message.contains("iCloud storage is full") == true)
+        #expect(fake.pushedRooms.isEmpty, "create must not reach CloudKit after a failed preflight")
+    }
+
+    @Test("Hosting failure copy is specific and includes the CKError code")
+    func hostingCopy() {
+        #expect(CloudKitRoomStore.hostingMessage(for: .quotaExceeded, ckCode: 25)
+            .contains("[CKError 25]"))
+        #expect(CloudKitRoomStore.hostingMessage(for: .managedAccount, ckCode: nil)
+            .contains("school or organization"))
+        #expect(CloudKitRoomStore.hostingMessage(for: .unknown("badContainer"), ckCode: 5)
+            .contains("badContainer"))
+        // Every hosting message keeps the join path open.
+        for issue: HostingIssue in [.quotaExceeded, .managedAccount, .notSignedIn, .unknown("x")] {
+            #expect(CloudKitRoomStore.hostingMessage(for: issue, ckCode: nil).lowercased().contains("join"))
+        }
     }
 
     @Test("No iCloud account surfaces a sign-in alert, not a crash")

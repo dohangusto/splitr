@@ -4,8 +4,11 @@
 <dict>
 	<key>CKSharingSupported</key>
 	<true/>
-	<key>NSCameraUsageDescription</key>
-	<string>splitr scans your restaurant receipt to read the items, so everyone can claim what they ordered.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_splitr-join._tcp</string>
+		<string>_splitr-join._udp</string>
+	</array>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>

@@ -14,6 +14,7 @@ struct RoomDetailView: View {
     @State private var showRollbackConfirm = false
     @State private var memberToKick: Member?
     @State private var inviteURL: URL?
+    @State private var showNearbyHost = false
 
     private var room: Room? { store.room(withID: roomID) }
     private var actingID: UUID? { store.actingMemberID(in: roomID) }
@@ -48,6 +49,17 @@ struct RoomDetailView: View {
         .sheet(item: $inviteURL) { url in
             // Members who open this link join the room's shared CloudKit zone.
             ShareLinkSheet(url: url, roomName: room.name)
+        }
+        .sheet(isPresented: $showNearbyHost) {
+            if let cloudStore = AppComposition.cloudStore {
+                NearbyHostView(
+                    store: cloudStore,
+                    roomID: roomID,
+                    roomName: room.name,
+                    hostDisplayName: room.member(withID: room.hostMemberID)?.displayName ?? "Host",
+                    onUseLink: { fetchInviteURL() }
+                )
+            }
         }
         .sheet(isPresented: $showJoinMember) {
             JoinMemberView(store: store, roomID: roomID)
@@ -222,6 +234,11 @@ struct RoomDetailView: View {
                     Label("Add Member", systemImage: "person.badge.plus")
                 }
                 if actingIsHost, AppComposition.cloudStore != nil {
+                    Button {
+                        showNearbyHost = true
+                    } label: {
+                        Label("Add People Nearby", systemImage: "iphone.radiowaves.left.and.right")
+                    }
                     Button {
                         fetchInviteURL()
                     } label: {
