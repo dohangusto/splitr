@@ -55,10 +55,6 @@ struct ProfileView: View {
             Section("Avatar") {
                 EmojiPicker(selection: $emoji)
             }
-            Section {
-            } footer: {
-                Text("This is how you appear when you join or create a room. You can still change it per room.")
-            }
         }
         .navigationTitle("Profile")
         .toolbarTitleDisplayMode(.inline)

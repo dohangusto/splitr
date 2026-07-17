@@ -20,20 +20,18 @@ struct RoomListView: View {
     @State private var showProfile = false
     @State private var isCheckingHosting = false
     @State private var hostingIssue: String?
-    @State private var searchText = ""
     @State private var profile = UserProfile.load()
 
     // Per-tab navigation paths: the bottom accessory is Home-scoped, so it
     // must disappear the moment any stack leaves its root.
     @State private var roomsPath: [UUID] = []
     @State private var historyPath: [UUID] = []
-    @State private var searchPath: [UUID] = []
 
     private var activeRooms: [Room] { store.rooms.filter { $0.state != .closed } }
     private var closedRooms: [Room] { store.rooms.filter { $0.state == .closed } }
 
     private var isAtRoot: Bool {
-        roomsPath.isEmpty && historyPath.isEmpty && searchPath.isEmpty && !showProfile
+        roomsPath.isEmpty && historyPath.isEmpty && !showProfile
     }
 
     var body: some View {
@@ -91,9 +89,6 @@ struct RoomListView: View {
             }
             Tab("History", systemImage: "archivebox") {
                 historyTab
-            }
-            Tab("Search", systemImage: "magnifyingglass", role: .search) {
-                searchTab
             }
         }
         .tabBarMinimizeBehavior(.onScrollDown)
@@ -210,41 +205,6 @@ struct RoomListView: View {
         }
     }
 
-    // MARK: - Search tab
-
-    private var searchResults: [Room] {
-        let query = searchText.trimmingCharacters(in: .whitespaces)
-        guard !query.isEmpty else { return store.rooms }
-        return store.rooms.filter {
-            $0.name.localizedCaseInsensitiveContains(query)
-        }
-    }
-
-    private var searchTab: some View {
-        NavigationStack(path: $searchPath) {
-            Group {
-                if searchResults.isEmpty {
-                    ContentUnavailableView.search(text: searchText)
-                } else {
-                    List(searchResults) { room in
-                        NavigationLink(value: room.id) {
-                            RoomRow(
-                                room: room,
-                                perspectiveID: store.actingMemberID(in: room.id)
-                            )
-                        }
-                    }
-                }
-            }
-            .navigationTitle("Search")
-            .toolbarTitleDisplayMode(.inlineLarge)
-            .searchable(text: $searchText, prompt: "Room name")
-            .navigationDestination(for: UUID.self) { roomID in
-                RoomDetailView(store: store, roomID: roomID)
-            }
-        }
-    }
-
     // MARK: - Actions
 
     /// Hosting preflight before the create flow: quota-full or managed
@@ -333,9 +293,8 @@ private struct JoinCreateAccessory: View {
 // MARK: - Row
 
 /// One room, answered from the viewer's perspective: what do I need to do
-/// about it? Name + state badge, the rupiah number that matters to *me*
-/// (owed as a member, outstanding as the host), and an explicit signal
-/// whenever the room is waiting on me.
+/// about it? Name plus a single secondary line — the waiting-on-me signal
+/// when there is one, otherwise the rupiah number that matters to *me*.
 private struct RoomRow: View {
     let room: Room
     let perspectiveID: UUID?
@@ -343,19 +302,16 @@ private struct RoomRow: View {
     var body: some View {
         let glance = RoomGlance(room: room, memberID: perspectiveID)
         VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(room.name)
-                    .font(.headline)
-                Spacer()
-                RoomStateBadge(state: room.state)
-            }
-            Text(glance.headline)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            Text(room.name)
+                .font(.headline)
             if let waiting = glance.waitingOnMe {
                 Label(waiting, systemImage: "hand.point.right.fill")
-                    .font(.footnote.weight(.medium))
+                    .font(.subheadline.weight(.medium))
                     .foregroundStyle(.orange)
+            } else {
+                Text(glance.headline)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
             }
         }
         .padding(.vertical, 2)
@@ -461,37 +417,6 @@ private struct RoomGlance {
         return room.claims(for: memberID)
             .reduce(Fraction.zero) { $0 + $1.portion * (prices[$1.itemID] ?? 0) }
             .flooredValue
-    }
-}
-
-struct RoomStateBadge: View {
-    let state: RoomState
-
-    var body: some View {
-        Text(label)
-            .font(.caption.weight(.semibold))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(color.opacity(0.15), in: .capsule)
-            .foregroundStyle(color)
-    }
-
-    private var label: String {
-        switch state {
-        case .open: "Open"
-        case .claiming: "Claiming"
-        case .settling: "Settling"
-        case .closed: "Closed"
-        }
-    }
-
-    private var color: Color {
-        switch state {
-        case .open: .blue
-        case .claiming: .orange
-        case .settling: .purple
-        case .closed: .gray
-        }
     }
 }
 

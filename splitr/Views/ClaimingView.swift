@@ -53,11 +53,6 @@ struct ClaimingView: View {
                     }
                 } header: {
                     Text(bill.merchantName)
-                } footer: {
-                    let unclaimed = bill.items.filter { $0.claimState == .unclaimed }.count
-                    if unclaimed > 0 {
-                        Text("\(unclaimed) item\(unclaimed == 1 ? "" : "s") still unclaimed.")
-                    }
                 }
             }
         }
@@ -159,10 +154,26 @@ private struct ClaimItemRow: View {
                 Text(item.unitPrice.rupiah)
                     .foregroundStyle(.secondary)
             }
-            statusLine
-            actions
+            HStack {
+                statusLine
+                Spacer()
+                actionButton
+            }
         }
         .padding(.vertical, 2)
+        .contextMenu {
+            // Host exception power, off the default surface: long-press to
+            // assign an item to any member.
+            if actingIsHost {
+                Menu("Assign to…") {
+                    ForEach(room.members) { member in
+                        Button("\(member.avatarEmoji) \(member.displayName)") {
+                            onForceAssign(member.id)
+                        }
+                    }
+                }
+            }
+        }
     }
 
     @ViewBuilder
@@ -197,9 +208,10 @@ private struct ClaimItemRow: View {
         }
     }
 
+    /// One explicit trailing button per row — the row's single action.
     @ViewBuilder
-    private var actions: some View {
-        HStack(spacing: 12) {
+    private var actionButton: some View {
+        Group {
             switch item.claimState {
             case .unclaimed:
                 Button("Claim", action: onClaim)
@@ -212,16 +224,6 @@ private struct ClaimItemRow: View {
             case .forceAssigned:
                 EmptyView()
             }
-            if actingIsHost {
-                Menu("Assign…") {
-                    ForEach(room.members) { member in
-                        Button("\(member.avatarEmoji) \(member.displayName)") {
-                            onForceAssign(member.id)
-                        }
-                    }
-                }
-            }
-            Spacer()
         }
         .font(.subheadline)
         .buttonStyle(.borderless)

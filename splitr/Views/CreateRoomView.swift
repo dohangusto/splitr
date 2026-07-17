@@ -16,7 +16,7 @@ struct CreateRoomView: View {
                 Section("Room") {
                     TextField("Room name (e.g. Makan Malam Tim)", text: $roomName)
                 }
-                Section("You (the host — you pay first, friends pay you back)") {
+                Section("You") {
                     TextField("Your display name", text: $hostName)
                     EmojiPicker(selection: $emoji)
                 }

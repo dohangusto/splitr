@@ -9,6 +9,8 @@ struct SettlementView: View {
     let roomID: UUID
 
     @State private var showCloseConfirm = false
+    /// Host view: which member's breakdown is expanded (detail behind a tap).
+    @State private var expandedMemberID: UUID?
 
     private var room: Room? { store.room(withID: roomID) }
     private var actingID: UUID? { store.actingMemberID(in: roomID) }
@@ -30,7 +32,11 @@ struct SettlementView: View {
             ContentUnavailableView {
                 Label("Items still unclaimed", systemImage: "exclamationmark.triangle")
             } description: {
-                Text("\(unclaimedCount) item\(unclaimedCount == 1 ? "" : "s") have no owner. Reopen claiming so members can claim them, or assign them yourself.")
+                if actingIsHost {
+                    Text("\(unclaimedCount) item\(unclaimedCount == 1 ? "" : "s") have no owner. Reopen claiming so members can claim them, or assign them yourself.")
+                } else {
+                    Text("\(unclaimedCount) item\(unclaimedCount == 1 ? "" : "s") have no owner yet. The host is sorting it out.")
+                }
             }
             .toolbar {
                 if actingIsHost, room.state == .settling {
@@ -43,18 +49,13 @@ struct SettlementView: View {
             }
         case .success(let settlement):
             List {
-                ForEach(room.members) { member in
-                    if let share = settlement.settlement(for: member.id) {
-                        memberSection(
-                            member: member,
-                            share: share,
-                            room: room,
-                            actingID: actingID,
-                            readOnly: readOnly
-                        )
-                    }
+                if actingIsHost {
+                    hostSection(settlement, room: room, readOnly: readOnly)
+                    totalsSection(settlement, room: room)
+                } else if let me = room.member(withID: actingID),
+                          let share = settlement.settlement(for: actingID) {
+                    mySection(member: me, share: share, readOnly: readOnly)
                 }
-                totalsSection(settlement, room: room, readOnly: readOnly)
             }
             .navigationTitle(readOnly ? "Final Summary" : "Settlement")
             .navigationBarTitleDisplayMode(.inline)
@@ -93,27 +94,16 @@ struct SettlementView: View {
 
     // MARK: - Toolbar
 
-    /// Settlement's own actions, in the top toolbar: the acting member's
-    /// "I've Paid" and the host's final "Close Room". Per-member confirms
-    /// stay on the member rows they belong to.
+    /// The host's final "Close Room" is screen-scoped, so it lives here.
+    /// The member's "I've Paid" is their primary action and lives in content.
     @ToolbarContentBuilder
     private func settlementToolbar(_ room: Room, actingID: UUID, readOnly: Bool) -> some ToolbarContent {
-        if !readOnly {
-            if let acting = room.member(withID: actingID),
-               !acting.isHost, acting.paymentStatus == .none {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("I've Paid") {
-                        store.markPaid(roomID: roomID)
-                    }
+        if !readOnly, actingIsHost {
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Close Room") {
+                    showCloseConfirm = true
                 }
-            }
-            if actingIsHost {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Close Room") {
-                        showCloseConfirm = true
-                    }
-                    .disabled(!allConfirmed(room))
-                }
+                .disabled(!allConfirmed(room))
             }
         }
     }
@@ -126,66 +116,108 @@ struct SettlementView: View {
 
     // MARK: - Sections
 
-    private func memberSection(
-        member: Member,
-        share: MemberSettlement,
-        room: Room,
-        actingID: UUID,
-        readOnly: Bool
-    ) -> some View {
+    /// Host view: one row per owing member — name, amount, confirm — with
+    /// the Items/Tax/Service breakdown behind a tap on the row.
+    private func hostSection(_ settlement: Settlement, room: Room, readOnly: Bool) -> some View {
         Section {
-            LabeledContent("Items") { Text(share.subtotal.rupiah) }
-            LabeledContent("Tax (PB1)") { Text(share.taxShare.rupiah) }
-            LabeledContent("Service") { Text(share.serviceShare.rupiah) }
-            LabeledContent {
-                Text(share.totalOwed.rupiah).bold()
-            } label: {
-                Text(member.isHost ? "Their share" : "Owes the host").bold()
-            }
-
-            if !member.isHost {
-                paymentRow(member: member, room: room, actingID: actingID, readOnly: readOnly)
+            ForEach(room.members.filter { !$0.isHost }) { member in
+                if let share = settlement.settlement(for: member.id) {
+                    memberRow(member: member, share: share, readOnly: readOnly)
+                    if expandedMemberID == member.id {
+                        breakdownRows(share)
+                    }
+                }
             }
         } header: {
+            Text("Who owes what")
+        }
+    }
+
+    @ViewBuilder
+    private func memberRow(member: Member, share: MemberSettlement, readOnly: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text("\(member.avatarEmoji) \(member.displayName)")
-                if member.isHost {
-                    Text("· paid the bill")
+                Spacer()
+                Text(share.totalOwed.rupiah).bold()
+            }
+            HStack {
+                statusLabel(member.paymentStatus)
+                Spacer()
+                if !readOnly, member.paymentStatus != .hostConfirmed {
+                    Button("Confirm received") {
+                        store.confirmPayment(of: member.id, roomID: roomID)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
                 }
             }
         }
-    }
-
-    /// The acting member's own "I've Paid" lives in the bottom toolbar;
-    /// the host's per-member confirm stays here because it is contextual
-    /// to this row (one control per member).
-    @ViewBuilder
-    private func paymentRow(member: Member, room: Room, actingID: UUID, readOnly: Bool) -> some View {
-        HStack(spacing: 12) {
-            checkmark(
-                done: member.paymentStatus != .none,
-                label: "Paid"
-            )
-            checkmark(
-                done: member.paymentStatus == .hostConfirmed,
-                label: "Received"
-            )
-            Spacer()
-            if !readOnly, actingIsHost, member.paymentStatus != .hostConfirmed {
-                Button("Confirm received") { store.confirmPayment(of: member.id, roomID: roomID) }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-            }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            expandedMemberID = expandedMemberID == member.id ? nil : member.id
         }
     }
 
-    private func checkmark(done: Bool, label: String) -> some View {
-        Label(label, systemImage: done ? "checkmark.circle.fill" : "circle")
-            .font(.caption)
-            .foregroundStyle(done ? .green : .secondary)
+    @ViewBuilder
+    private func breakdownRows(_ share: MemberSettlement) -> some View {
+        LabeledContent("Items") { Text(share.subtotal.rupiah) }
+        LabeledContent("Tax (PB1)") { Text(share.taxShare.rupiah) }
+        LabeledContent("Service") { Text(share.serviceShare.rupiah) }
     }
 
-    private func totalsSection(_ settlement: Settlement, room: Room, readOnly: Bool) -> some View {
+    @ViewBuilder
+    private func statusLabel(_ status: PaymentStatus) -> some View {
+        switch status {
+        case .none:
+            Label("Unpaid", systemImage: "circle")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        case .memberMarkedPaid:
+            Label("Marked paid", systemImage: "checkmark.circle")
+                .font(.caption)
+                .foregroundStyle(.orange)
+        case .hostConfirmed:
+            Label("Settled", systemImage: "checkmark.circle.fill")
+                .font(.caption)
+                .foregroundStyle(.green)
+        }
+    }
+
+    /// Member view: their own breakdown, total, and "I've Paid" — nothing
+    /// about anyone else.
+    private func mySection(member: Member, share: MemberSettlement, readOnly: Bool) -> some View {
+        Section {
+            breakdownRows(share)
+            LabeledContent {
+                Text(share.totalOwed.rupiah).bold()
+            } label: {
+                Text("You owe the host").bold()
+            }
+            if !readOnly {
+                switch member.paymentStatus {
+                case .none:
+                    Button {
+                        store.markPaid(roomID: roomID)
+                    } label: {
+                        Text("I've Paid")
+                            .frame(maxWidth: .infinity, alignment: .center)
+                    }
+                case .memberMarkedPaid:
+                    statusLabel(.memberMarkedPaid)
+                case .hostConfirmed:
+                    statusLabel(.hostConfirmed)
+                }
+            } else {
+                statusLabel(member.paymentStatus)
+            }
+        } header: {
+            Text("Your share")
+        }
+    }
+
+    /// Host only: the whole-bill arithmetic.
+    private func totalsSection(_ settlement: Settlement, room: Room) -> some View {
         Section {
             LabeledContent("Subtotal") { Text(settlement.billSubtotal.rupiah) }
             LabeledContent("Tax (PB1)") { Text(settlement.taxTotal.rupiah) }
@@ -195,17 +227,8 @@ struct SettlementView: View {
             } label: {
                 Text("Grand total").bold()
             }
-            if settlement.roundingRemainder > 0 {
-                Text("Host absorbs \(settlement.roundingRemainder.rupiah) of rounding.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
         } header: {
             Text("Bill total")
-        } footer: {
-            if !readOnly, actingIsHost, !allConfirmed(room) {
-                Text("You can close the room once every member's payment is confirmed.")
-            }
         }
     }
 }

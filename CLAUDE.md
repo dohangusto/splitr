@@ -78,7 +78,28 @@ Rules:
 - **Do not push actions into the toolbar for tidiness.** An action that belongs to a row, a total, or an empty state belongs in content. A screen's primary paths must be reachable where a first-time user will actually look — for Home, the empty state must present *both* Create and Join, since a user who cannot host still needs Join.
 - Content is what the app is for; the tools layer is how to move around it. When in doubt, prefer content.
 
-## Tech conventions
+## Design rules — subtract, don't add
+
+A design review found the app overwhelming: too much data and text on screen, unclear actions, and every role able to do everything. These rules exist to prevent that. **The default move is to remove.** If a screen is unclear, the fix is almost never another label, badge, or count.
+
+- **One primary action per screen, per role.** Everything else is secondary or hidden. If two things compete for primary, the screen is doing two jobs.
+- **Every screen answers exactly one question.** Home: *which room needs me?* Claiming: *which items are mine?* Settlement: *what do I owe* (member) / *who hasn't paid* (host). Anything that doesn't serve that question does not belong on the screen.
+- **Show the number that changes, not every number we have.** A list row is one line plus at most one secondary line. If it needs three, the row is doing too much — move detail behind a tap.
+- **No badge, status, count, or signal unless it changes what the user does next.** Decoration is cognitive load.
+- **Default to the common case.** Rare cases must be *possible*, not *visible*.
+- **If a role can't act on something, don't show it to them.**
+- Prefer removing a control over explaining it. Prefer one clear word over an accurate phrase.
+
+## Role asymmetry
+
+The two frustrations that kill this app: the host thinks *"all this hassle just to split a bill?"* and stops fronting money; the member thinks *"this much work just to total my share?"* and stops using it. Both come from decisions on screen, not from permissions.
+
+The asymmetry is about **how many decisions each person faces at once**, not how many capabilities they hold. Members stay self-service so the host never becomes a middleman — but their default surface stays nearly empty.
+
+- **Member's default path is two actions, app-wide:** claim what's mine → "I've paid". Nothing else belongs on their default surface.
+- **Host's default path is four:** scan → publish → close claiming → confirm payments. The host's screens must never accumulate chores.
+- **Host power is exception handling, not the default path.** Force-assign, kick, rollback, editing rates or items — all live behind an explicit "Manage"/edit affordance, never on the main surface.
+- Never make one role wait on the other for something they could do themselves.
 
 - Swift 6, SwiftUI, `@Observable` view models (no Combine-era ObservableObject unless required).
 - Swift Testing (`import Testing`, `#expect`) — not XCTest — for any test that is written.
@@ -121,3 +142,5 @@ Do not start a milestone early. Simulator suffices for 1–3; milestones 4–5 n
 - Swallow a `CKError` behind generic copy, or let a hosting failure block joining.
 - Send anything but the three defined join messages over NI/MPC.
 - Edit capabilities, entitlements, or the pbxproj config yourself.
+- Add a label, badge, count, or control "for completeness" — see the design rules; every addition must earn its place by changing what the user does next.
+- Put host-only exception powers (force-assign, kick, rollback, rate editing) on a default surface.

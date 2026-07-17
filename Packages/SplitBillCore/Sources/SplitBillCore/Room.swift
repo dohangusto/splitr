@@ -157,7 +157,7 @@ public struct Room: Identifiable, Sendable, Hashable, Codable {
     /// claims that a wholesale replacement would silently orphan.
     public mutating func updateBill(_ bill: Bill, by actorID: UUID) throws {
         try requireHost(actorID)
-        guard state == .open else {
+        guard state == .open || state == .claiming else {
             throw RoomError.billEditingNotAllowed(state)
         }
         guard let index = bills.firstIndex(where: { $0.id == bill.id }) else {

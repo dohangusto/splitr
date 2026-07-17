@@ -48,6 +48,11 @@ struct AddBillForm: View {
         validItems.reduce(0) { $0 + ($1.price ?? 0) * $1.qty }
     }
 
+    private var isReadOnly: Bool {
+        let state = store.room(withID: roomID)?.state
+        return state != .open && state != .claiming
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // The photo stays pinned above the form the whole time, so
@@ -64,7 +69,7 @@ struct AddBillForm: View {
             if scan != nil {
                 Section {
                     Label {
-                        Text("Scanned — please verify. Check every name and price against the paper receipt before saving.")
+                        Text("Check items against the receipt before saving.")
                             .font(.subheadline)
                     } icon: {
                         Image(systemName: "doc.viewfinder")
@@ -96,8 +101,6 @@ struct AddBillForm: View {
                 }
             } header: {
                 Text("Line items")
-            } footer: {
-                Text("Swipe left or long-press a row to delete it — handy for lines the scanner got wrong.")
             }
 
             Section("Tax & service") {
@@ -125,20 +128,25 @@ struct AddBillForm: View {
 
             Section {
                 LabeledContent("Subtotal", value: subtotal.rupiah)
-            } footer: {
-                Text("Each unit of a quantity becomes its own claimable row — friends claim per portion.")
             }
         }
-        .navigationTitle(existingBill != nil ? "Edit Bill" : scan == nil ? "Add Bill" : "Review Scan")
+        .disabled(isReadOnly)
+        .navigationTitle(existingBill != nil ? (isReadOnly ? "View Bill" : "Edit Bill") : scan == nil ? "Add Bill" : "Review Scan")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
-                Button("Cancel") { dismiss() }
+                if isReadOnly {
+                    Button("Done") { dismiss() }
+                } else {
+                    Button("Cancel") { dismiss() }
+                }
             }
             ToolbarItem(placement: .confirmationAction) {
-                Button("Save") { save() }
-                    .disabled(merchant.trimmingCharacters(in: .whitespaces).isEmpty
-                        || validItems.isEmpty)
+                if !isReadOnly {
+                    Button("Save") { save() }
+                        .disabled(merchant.trimmingCharacters(in: .whitespaces).isEmpty
+                            || validItems.isEmpty)
+                }
             }
         }
         .onAppear {
