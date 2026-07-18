@@ -1,10 +1,7 @@
-import CoreGraphics
-import Foundation
 import Testing
-import SplitBillCore
-@testable import splitr
+@testable import SplitBillCore
 
-/// Parser tests run on raw recognized-text fixtures — no camera, no Vision,
+/// Parser tests run on recognized-text fixtures — no camera, no Vision,
 /// fully simulator/CI-safe.
 @Suite("ReceiptParser")
 struct ReceiptParserTests {
@@ -26,15 +23,16 @@ struct ReceiptParserTests {
             """)
 
         #expect(parsed.merchantName == "WARUNG TEKKO")
-        #expect(parsed.items.count == 3)
+        // Quantity explodes at parse time: 2x Sate → two unit rows.
+        #expect(parsed.items.count == 4)
         #expect(parsed.items[0].name == "Nasi Goreng Kambing")
         #expect(parsed.items[0].price == 55_000)
-        #expect(parsed.items[0].qty == 1)
         #expect(parsed.items[1].name == "Sate Ayam")
-        #expect(parsed.items[1].qty == 2)
+        #expect(parsed.items[2].name == "Sate Ayam")
         #expect(parsed.items[1].price == 35_000) // 70.000 line total / 2
+        #expect(parsed.items[1].qty == 1)
         #expect(parsed.items[1].needsReview == false)
-        #expect(parsed.items[2].price == 10_000)
+        #expect(parsed.items[3].price == 10_000)
         #expect(parsed.printedSubtotal == 135_000)
         #expect(parsed.servicePercent == 5)
         #expect(parsed.taxPercent == 10)
@@ -74,28 +72,27 @@ struct ReceiptParserTests {
             PPN 10%                   7.200
             """)
 
-        #expect(parsed.items.count == 2)
+        #expect(parsed.items.count == 3)
         #expect(parsed.items[0].name == "KopKen Mantan")
-        #expect(parsed.items[0].qty == 2)
+        #expect(parsed.items[1].name == "KopKen Mantan")
         #expect(parsed.items[0].price == 22_000) // from the @unit, not the total
-        #expect(parsed.items[1].name == "Croffle Choc")
-        #expect(parsed.items[1].price == 28_000) // Rp prefix + ,00 tail stripped
+        #expect(parsed.items[2].name == "Croffle Choc")
+        #expect(parsed.items[2].price == 28_000) // Rp prefix + ,00 tail stripped
         #expect(parsed.taxPercent == 10)
         // No service charge → both bases coincide; basis stays undetermined.
         #expect(parsed.taxBasis == nil)
     }
 
-    @Test("Trailing x2 marker with a non-divisible total flags the row")
+    @Test("Trailing x2 marker with a non-divisible total flags both unit rows")
     func trailingQtyNonDivisible() {
         let parsed = ReceiptParser.parse(text: """
             SOLARIA
             Ayam Lada Hitam x2   90.001
             """)
 
-        #expect(parsed.items.count == 1)
-        #expect(parsed.items[0].qty == 2)
-        #expect(parsed.items[0].price == 45_000) // floor of 90.001 / 2
-        #expect(parsed.items[0].needsReview == true) // …but flagged for review
+        #expect(parsed.items.count == 2)
+        #expect(parsed.items.allSatisfy { $0.price == 45_000 }) // floor of 90.001 / 2
+        #expect(parsed.items.allSatisfy { $0.needsReview }) // …but flagged for review
     }
 
     @Test("Discount lines never become items and are surfaced, not dropped")
@@ -162,24 +159,123 @@ struct ReceiptParserTests {
         ("55.000,00", 55_000),
         ("Rp 8.000", 8_000),
         ("24000", 24_000),
+        ("15.000,-", 15_000),
         ("1.234.500", 1_234_500),
     ])
     func moneyValues(input: String, expected: Int) {
         #expect(ReceiptParser.trailingMoney(in: "Item \(input)")?.value == expected)
     }
 
+    // MARK: - Structured table rows
+
+    @Test("Table row with name | qty | price cells uses the structure")
+    func tableRowNameQtyPrice() {
+        let receipt = RecognizedReceipt(rows: [
+            .line(RecognizedText(text: "WARUNG TEKKO")),
+            .tableRow([
+                RecognizedText(text: "Sate Ayam"),
+                RecognizedText(text: "2"),
+                RecognizedText(text: "70.000"),
+            ]),
+            .tableRow([
+                RecognizedText(text: "Es Teh Manis"),
+                RecognizedText(text: "1"),
+                RecognizedText(text: "10.000"),
+            ]),
+        ])
+        let parsed = ReceiptParser.parse(receipt)
+
+        #expect(parsed.merchantName == "WARUNG TEKKO")
+        #expect(parsed.items.count == 3)
+        #expect(parsed.items[0].name == "Sate Ayam")
+        #expect(parsed.items[0].price == 35_000) // 70.000 total / qty 2
+        #expect(parsed.items[2].name == "Es Teh Manis")
+        #expect(parsed.items[2].price == 10_000)
+    }
+
+    @Test("Table row with unit and total columns prefers the agreeing unit")
+    func tableRowUnitAndTotal() {
+        let receipt = RecognizedReceipt(rows: [
+            .tableRow([
+                RecognizedText(text: "Kopi Susu"),
+                RecognizedText(text: "3"),
+                RecognizedText(text: "18.000"),
+                RecognizedText(text: "54.000"),
+            ])
+        ])
+        let parsed = ReceiptParser.parse(receipt)
+
+        #expect(parsed.items.count == 3)
+        #expect(parsed.items.allSatisfy { $0.price == 18_000 })
+        #expect(parsed.items.allSatisfy { !$0.needsReview })
+    }
+
+    @Test("Summary rows inside the table still classify as rates, not items")
+    func tableSummaryRows() {
+        let receipt = RecognizedReceipt(rows: [
+            .tableRow([RecognizedText(text: "Bakmi Spesial"), RecognizedText(text: "32.000")]),
+            .tableRow([RecognizedText(text: "Subtotal"), RecognizedText(text: "32.000")]),
+            .tableRow([RecognizedText(text: "PB1 10%"), RecognizedText(text: "3.200")]),
+        ])
+        let parsed = ReceiptParser.parse(receipt)
+
+        #expect(parsed.items.count == 1)
+        #expect(parsed.printedSubtotal == 32_000)
+        #expect(parsed.taxPercent == 10)
+    }
+
+    @Test("Geometry rides through to drafts for photo highlighting")
+    func geometryPreserved() {
+        let box = NormalizedRect(x: 0.1, y: 0.3, width: 0.8, height: 0.04)
+        let receipt = RecognizedReceipt(rows: [
+            .line(RecognizedText(text: "Mie Ayam 24.000", box: box, confidence: 0.42))
+        ])
+        let parsed = ReceiptParser.parse(receipt)
+
+        #expect(parsed.items.count == 1)
+        #expect(parsed.items[0].sourceBox == box)
+        #expect(parsed.items[0].confidence == 0.42)
+    }
+
+    // MARK: - Row assembly & table dedup
+
     @Test("Line assembly joins same-row fragments left to right, top to bottom")
     func lineAssembly() {
-        typealias Fragment = VisionReceiptRecognizer.TextFragment
-        // Vision-style normalized boxes, origin bottom-left: the name and
-        // price of one row arrive as separate observations.
+        // Normalized boxes, origin top-left (y grows downward): the name and
+        // price of one row arrive as separate fragments.
         let fragments = [
-            Fragment(text: "55.000", box: CGRect(x: 0.7, y: 0.80, width: 0.2, height: 0.04)),
-            Fragment(text: "Nasi Goreng", box: CGRect(x: 0.05, y: 0.81, width: 0.4, height: 0.04)),
-            Fragment(text: "Es Teh", box: CGRect(x: 0.05, y: 0.70, width: 0.3, height: 0.04)),
-            Fragment(text: "10.000", box: CGRect(x: 0.7, y: 0.69, width: 0.2, height: 0.04)),
+            RecognizedText(text: "55.000", box: NormalizedRect(x: 0.7, y: 0.16, width: 0.2, height: 0.04)),
+            RecognizedText(text: "Nasi Goreng", box: NormalizedRect(x: 0.05, y: 0.15, width: 0.4, height: 0.04)),
+            RecognizedText(text: "Es Teh", box: NormalizedRect(x: 0.05, y: 0.26, width: 0.3, height: 0.04)),
+            RecognizedText(text: "10.000", box: NormalizedRect(x: 0.7, y: 0.27, width: 0.2, height: 0.04)),
         ]
-        #expect(VisionReceiptRecognizer.assembleLines(fragments)
+        #expect(RecognizedReceipt.assembleLines(fragments).map(\.text)
             == ["Nasi Goreng  55.000", "Es Teh  10.000"])
+    }
+
+    @Test("Free lines inside a table region are replaced by the table's rows")
+    func tableDeduplicatesLines() {
+        let tableRegion = NormalizedRect(x: 0, y: 0.4, width: 1, height: 0.3)
+        let receipt = RecognizedReceipt(
+            lines: [
+                RecognizedText(text: "WARUNG", box: NormalizedRect(x: 0.3, y: 0.1, width: 0.4, height: 0.05)),
+                // Same content as the table row below — must not double-count.
+                RecognizedText(text: "Mie Ayam  24.000", box: NormalizedRect(x: 0.1, y: 0.5, width: 0.8, height: 0.05)),
+            ],
+            tables: [
+                RecognizedTable(
+                    rows: [[
+                        RecognizedText(text: "Mie Ayam", box: NormalizedRect(x: 0.1, y: 0.5, width: 0.4, height: 0.05)),
+                        RecognizedText(text: "24.000", box: NormalizedRect(x: 0.6, y: 0.5, width: 0.3, height: 0.05)),
+                    ]],
+                    region: tableRegion
+                )
+            ]
+        )
+        let parsed = ReceiptParser.parse(receipt)
+
+        #expect(parsed.merchantName == "WARUNG")
+        #expect(parsed.items.count == 1)
+        #expect(parsed.items[0].price == 24_000)
     }
 }

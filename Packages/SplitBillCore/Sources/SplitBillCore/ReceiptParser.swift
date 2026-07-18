@@ -1,47 +1,58 @@
 import Foundation
-import SplitBillCore
 
-/// Result of parsing recognized receipt text. Everything is best-effort:
+/// Result of parsing a recognized receipt. Everything is best-effort:
 /// nil means "not detected — let the user fill it in on the review form".
-struct ParsedReceipt {
-    var merchantName: String?
-    var items: [DraftItem] = []
-    /// Detected PB1 percentage (e.g. 10).
-    var taxPercent: Int?
-    /// Detected service charge percentage (e.g. 5).
-    var servicePercent: Int?
+/// This is a draft, never a `Bill`; nothing here reaches members without
+/// passing through the edit screen.
+public struct ParsedReceipt: Sendable, Hashable {
+    public var merchantName: String?
+    /// One draft per claimable unit — quantity is already exploded
+    /// (a "2x Sate" line yields two drafts), matching `BillItem` granularity.
+    public var items: [DraftItem] = []
+    /// Detected PB1 percentage (e.g. 10). Unconfirmed until reviewed.
+    public var taxPercent: Int?
+    /// Detected service charge percentage (e.g. 5). Unconfirmed until reviewed.
+    public var servicePercent: Int?
     /// Only set when the amounts prove which base the tax was computed on;
     /// nil when there is no service charge to disambiguate.
-    var taxBasis: TaxBasis?
+    public var taxBasis: TaxBasis?
     /// The receipt's printed subtotal, when found (verification aid).
-    var printedSubtotal: Int?
+    public var printedSubtotal: Int?
     /// Content lines the parser could not turn into items — surfaced to the
     /// user for manual entry, never dropped silently.
-    var unparsedLines: [String] = []
+    public var unparsedLines: [String] = []
+
+    public init() {}
 }
 
-/// Pure, hardware-free receipt text parser for Indonesian receipts.
-/// Input is recognized text lines (top to bottom); no camera, no Vision.
+/// Pure, hardware-free receipt parser for Indonesian receipts. Input is
+/// recognized rows (top to bottom) — free lines and/or structured table
+/// rows; no camera, no Vision.
 ///
 /// Handles: `Rp` prefixes, dot/comma thousand separators, trailing ",00"
-/// decimals, `2x` / `x2` / `2 @unit` quantity markers, abbreviated names,
-/// discount lines (excluded from items, surfaced), and PB1/service/subtotal
-/// detection including which base the tax was computed on.
-enum ReceiptParser {
+/// decimals, `2x` / `x2` / `2 @unit` quantity markers, table rows with
+/// separate name/qty/price cells, abbreviated names, discount lines
+/// (excluded from items, surfaced), and PB1/service/subtotal detection
+/// including which base the tax was computed on.
+public enum ReceiptParser {
 
-    static func parse(text: String) -> ParsedReceipt {
+    public static func parse(text: String) -> ParsedReceipt {
         parse(lines: text.components(separatedBy: .newlines))
     }
 
-    static func parse(lines: [String]) -> ParsedReceipt {
+    public static func parse(lines: [String]) -> ParsedReceipt {
+        parse(RecognizedReceipt(rows: lines.map { .line(RecognizedText(text: $0)) }))
+    }
+
+    public static func parse(_ receipt: RecognizedReceipt) -> ParsedReceipt {
         var result = ParsedReceipt()
         var taxAmount: Int?
         var serviceAmount: Int?
         var sawItem = false
         var sawTotal = false
 
-        for rawLine in lines {
-            let line = rawLine.trimmingCharacters(in: .whitespaces)
+        for row in receipt.rows {
+            let line = row.joinedText.trimmingCharacters(in: .whitespaces)
             guard !line.isEmpty, line.rangeOfCharacter(from: .alphanumerics) != nil else {
                 continue // blank or pure decoration (=== ---- ***)
             }
@@ -74,17 +85,27 @@ enum ReceiptParser {
                 continue
             }
 
-            // Item lines: name + trailing amount.
-            if !sawTotal, let money = trailingMoney(in: line) {
-                if money.value < 0 {
-                    result.unparsedLines.append(line) // unlabeled discount
-                } else if let item = parseItem(line: line, money: money) {
-                    result.items.append(item)
+            // Item rows: structured table row first, then name + trailing amount.
+            if !sawTotal {
+                if case .tableRow(let cells) = row, let items = parseTableRow(cells) {
+                    result.items.append(contentsOf: items)
                     sawItem = true
-                } else {
-                    result.unparsedLines.append(line)
+                    continue
                 }
-                continue
+                if let money = trailingMoney(in: line) {
+                    if money.value < 0 {
+                        result.unparsedLines.append(line) // unlabeled discount
+                    } else if let items = parseItems(
+                        line: line, money: money,
+                        box: row.box, confidence: row.confidence
+                    ) {
+                        result.items.append(contentsOf: items)
+                        sawItem = true
+                    } else {
+                        result.unparsedLines.append(line)
+                    }
+                    continue
+                }
             }
 
             // Text without an amount.
@@ -108,12 +129,91 @@ enum ReceiptParser {
         return result
     }
 
+    // MARK: - Table rows
+
+    /// Structured extraction from a table row: name cell(s) + optional qty
+    /// cell + price cell(s), as `RecognizeDocumentsRequest` splits receipt
+    /// columns. Returns nil (fall back to line parsing) when the shape
+    /// doesn't fit.
+    private static func parseTableRow(_ cells: [RecognizedText]) -> [DraftItem]? {
+        guard cells.count >= 2 else { return nil }
+
+        var nameParts: [String] = []
+        var qty = 1
+        var explicitUnit: Int?
+        var amounts: [Int] = []
+
+        for cell in cells {
+            let text = cell.text.trimmingCharacters(in: .whitespaces)
+            if text.isEmpty { continue }
+            // "@22.000" — explicit unit price marker.
+            if let match = text.firstMatch(of: /^@\s*(Rp\.?\s*)?([\d.,]+)$/),
+               let unit = moneyValue(String(match.2)) {
+                explicitUnit = unit
+            }
+            // Pure quantity: "2", "2x", "x2".
+            else if let match = text.wholeMatch(of: /[xX]?(\d{1,2})[xX]?/),
+                    let q = Int(match.1), (1...99).contains(q) {
+                qty = q
+            }
+            // Money cell: "55.000", "Rp 55.000".
+            else if let match = text.wholeMatch(of: /(?:Rp\.?\s*|IDR\s*)?(-?\(?[\d.,]+\)?)(?:\s*,-)?/),
+                    let value = moneyValue(String(match.1)), abs(value) >= 100 {
+                amounts.append(value)
+            }
+            // Name cell (possibly with an inline qty marker).
+            else {
+                nameParts.append(text)
+            }
+        }
+
+        guard !amounts.isEmpty else { return nil }
+        if amounts.contains(where: { $0 < 0 }) { return nil } // discount → fall back, surfaced
+        var name = nameParts.joined(separator: " ")
+
+        // Inline qty in the name cell: "2x Sate Ayam" / "Sate Ayam x2".
+        if qty == 1 {
+            if let match = name.firstMatch(of: /^(\d{1,2})\s*[xX]\s+/), let q = Int(match.1) {
+                qty = q
+                name.removeSubrange(match.range)
+            } else if let match = name.firstMatch(of: /\s[xX]\s?(\d{1,2})\s*$/), let q = Int(match.1) {
+                qty = q
+                name.removeSubrange(match.range)
+            }
+        }
+        name = cleaned(name)
+        guard !name.isEmpty else { return nil }
+
+        var unitPrice: Int
+        var needsReview = false
+        if let explicitUnit {
+            unitPrice = explicitUnit
+        } else if amounts.count >= 2, qty > 1, amounts.first! * qty == amounts.last! {
+            // [unit, total] columns agree.
+            unitPrice = amounts.first!
+        } else {
+            // Single amount (or ambiguous): treat the last as the line total.
+            (unitPrice, needsReview) = unitFromTotal(amounts.last!, qty: qty)
+        }
+
+        let box = cells.compactMap(\.box).reduce(nil as NormalizedRect?) { acc, next in
+            acc.map { $0.union(next) } ?? next
+        }
+        let confidence = cells.compactMap(\.confidence).min()
+        return explode(
+            name: name, unitPrice: unitPrice, qty: qty,
+            needsReview: needsReview, box: box, confidence: confidence
+        )
+    }
+
     // MARK: - Item lines
 
-    private static func parseItem(
+    private static func parseItems(
         line: String,
-        money: (value: Int, range: Range<String.Index>)
-    ) -> DraftItem? {
+        money: (value: Int, range: Range<String.Index>),
+        box: NormalizedRect?,
+        confidence: Double?
+    ) -> [DraftItem]? {
         // Amounts below Rp 100 are almost certainly not prices.
         guard money.value >= 100 else { return nil }
 
@@ -142,12 +242,31 @@ enum ReceiptParser {
             (unitPrice, needsReview) = unitFromTotal(money.value, qty: qty)
         }
 
-        name = name
-            .trimmingCharacters(in: .whitespaces)
+        let cleanedName = cleaned(name)
+        guard !cleanedName.isEmpty, qty >= 1 else { return nil }
+        return explode(
+            name: cleanedName, unitPrice: unitPrice, qty: qty,
+            needsReview: needsReview, box: box, confidence: confidence
+        )
+    }
+
+    /// Quantity explosion: one draft per claimable unit, per the data model.
+    private static func explode(
+        name: String, unitPrice: Int, qty: Int,
+        needsReview: Bool, box: NormalizedRect?, confidence: Double?
+    ) -> [DraftItem] {
+        (0..<qty).map { _ in
+            DraftItem(
+                name: name, price: unitPrice, qty: 1,
+                needsReview: needsReview, sourceBox: box, confidence: confidence
+            )
+        }
+    }
+
+    private static func cleaned(_ name: String) -> String {
+        name.trimmingCharacters(in: .whitespaces)
             .trimmingCharacters(in: CharacterSet(charactersIn: ".…-:*"))
             .trimmingCharacters(in: .whitespaces)
-        guard !name.isEmpty, qty >= 1 else { return nil }
-        return DraftItem(name: name, price: unitPrice, qty: qty, needsReview: needsReview)
     }
 
     private static func unitFromTotal(_ total: Int, qty: Int) -> (Int, Bool) {
@@ -163,8 +282,8 @@ enum ReceiptParser {
     /// Finds the amount at the end of a line ("Sate Ayam  70.000",
     /// "Es Teh Rp 10.000", "Diskon -5.000"). Returns nil if the line
     /// doesn't end in something money-shaped.
-    static func trailingMoney(in line: String) -> (value: Int, range: Range<String.Index>)? {
-        let pattern = /(?:Rp\.?\s*|IDR\s*)?(-?\(?\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{2})?\)?|-?\(?\d{4,}\)?)\s*$/
+    public static func trailingMoney(in line: String) -> (value: Int, range: Range<String.Index>)? {
+        let pattern = /(?:Rp\.?\s*|IDR\s*)?(-?\(?\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{2})?\)?|-?\(?\d{4,}\)?)\s*(?:,-)?\s*$/
         guard let match = line.firstMatch(of: pattern),
               let value = moneyValue(String(match.1)) else { return nil }
         return (value, match.range)
@@ -172,8 +291,9 @@ enum ReceiptParser {
 
     /// "55.000" → 55000, "55.000,00" → 55000, "Rp 8.000" → 8000,
     /// "(5.000)" / "-5.000" → -5000, "24000" → 24000.
-    static func moneyValue(_ raw: String) -> Int? {
+    public static func moneyValue(_ raw: String) -> Int? {
         var s = raw.trimmingCharacters(in: .whitespaces)
+        if s.hasSuffix(",-") { s = String(s.dropLast(2)) }
         var negative = false
         if s.hasPrefix("-") { negative = true; s.removeFirst() }
         if s.hasPrefix("("), s.hasSuffix(")") {
