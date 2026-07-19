@@ -275,11 +275,31 @@ enum ReceiptScanPipeline {
     ) async throws -> (parsed: ParsedReceipt, corrected: UIImage) {
         let upright = image.normalizedUp()
         let corrected = await perspectiveCorrected(upright) ?? upright
-        guard let cgImage = corrected.cgImage else {
-            return (ParsedReceipt(), corrected)
+
+        // Receipts are portrait, and Vision reads rotated or inverted text
+        // far worse — sometimes not at all. The corrected quad's aspect
+        // ratio exposes a sideways shot (landscape output → rotate 90°);
+        // geometry can't see a 180° flip, so when recognition comes back
+        // thin, the inverted orientation gets a try and the better read
+        // wins. The returned image always matches the orientation that was
+        // recognized, so draft boxes stay aligned for highlighting.
+        let candidates: [UIImage] =
+            corrected.size.width > corrected.size.height
+                ? [corrected.rotated(.right), corrected.rotated(.left)]
+                : [corrected, corrected.rotated(.down)]
+
+        var best: (receipt: RecognizedReceipt, image: UIImage)?
+        for candidate in candidates {
+            guard let cgImage = candidate.cgImage else { continue }
+            let recognized = try await recognizer.recognize(cgImage)
+            if recognized.rows.count > (best?.receipt.rows.count ?? 0) {
+                best = (recognized, candidate)
+            }
+            // A solid read needs no second opinion.
+            if recognized.rows.count >= 3 { break }
         }
-        let recognized = try await recognizer.recognize(cgImage)
-        return (ReceiptParser.parse(recognized), corrected)
+        guard let best else { return (ParsedReceipt(), candidates[0]) }
+        return (ReceiptParser.parse(best.receipt), best.image)
     }
 
     private static func perspectiveCorrected(_ image: UIImage) async -> UIImage? {
@@ -321,6 +341,13 @@ private extension UIImage {
         return UIGraphicsImageRenderer(size: size, format: format).image { _ in
             draw(in: CGRect(origin: .zero, size: size))
         }
+    }
+
+    /// Physically rotates the pixels (`.right` = 90° CW, `.left` = 90° CCW,
+    /// `.down` = 180°).
+    func rotated(_ orientation: UIImage.Orientation) -> UIImage {
+        guard let cgImage else { return self }
+        return UIImage(cgImage: cgImage, scale: 1, orientation: orientation).normalizedUp()
     }
 }
 

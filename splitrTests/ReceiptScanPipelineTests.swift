@@ -35,10 +35,33 @@ struct ReceiptScanPipelineTests {
         #expect(parsed.items.contains { $0.name.localizedCaseInsensitiveContains("Es Teh") && $0.price == 10_000 })
         #expect(parsed.printedSubtotal == 65_000)
         #expect(parsed.taxPercent == 10)
+        // The parse reconciles: summed items match the printed subtotal.
+        #expect(parsed.subtotalMismatch == 0)
         // Geometry must survive the pipeline — the edit screen highlights
         // each row's source region on the photo.
         #expect(parsed.items.allSatisfy { $0.sourceBox != nil })
         #expect(parsed.items.allSatisfy { $0.confidence != nil })
+    }
+
+    @Test("Fixture whose items don't sum to the printed subtotal reports the mismatch")
+    func subtotalMismatchSurfaces() async throws {
+        // Printed subtotal says 99.000; the two items sum to 65.000 —
+        // as if OCR missed a line. Reconciliation must expose the gap.
+        let image = Self.renderReceipt(lines: [
+            "WARUNG TEKKO",
+            "",
+            "Nasi Goreng Kambing      55.000",
+            "Es Teh Manis             10.000",
+            "",
+            "Subtotal                 99.000",
+        ])
+
+        let recognized = try await VisionReceiptRecognizer().recognize(image.cgImage!)
+        let parsed = ReceiptParser.parse(recognized)
+
+        #expect(parsed.printedSubtotal == 99_000)
+        #expect(parsed.summedSubtotal == 65_000)
+        #expect(parsed.subtotalMismatch == 34_000)
     }
 
     @Test("Blank image parses to zero items — a normal outcome, not an error")

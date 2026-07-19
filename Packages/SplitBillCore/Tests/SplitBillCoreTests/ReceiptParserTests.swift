@@ -166,6 +166,86 @@ struct ReceiptParserTests {
         #expect(ReceiptParser.trailingMoney(in: "Item \(input)")?.value == expected)
     }
 
+    // MARK: - Multi-line items
+
+    @Test("Item split across lines: name, then qty x unit price")
+    func splitLineItem() {
+        let parsed = ReceiptParser.parse(text: """
+            WARUNG PADANG
+            Rendang Daging Spesial
+            2 x 25.000
+            Es Teh
+            5.000
+            Subtotal 55.000
+            """)
+
+        #expect(parsed.items.count == 3)
+        #expect(parsed.items[0].name == "Rendang Daging Spesial")
+        #expect(parsed.items[0].price == 25_000)
+        #expect(parsed.items[1].name == "Rendang Daging Spesial")
+        #expect(parsed.items[2].name == "Es Teh")
+        #expect(parsed.items[2].price == 5_000)
+        #expect(parsed.unparsedLines.isEmpty)
+        #expect(parsed.subtotalMismatch == 0)
+    }
+
+    @Test("Split-line item with qty, unit, and disagreeing total flags the rows")
+    func splitLineQtyUnitTotal() {
+        let parsed = ReceiptParser.parse(text: """
+            WARUNG
+            Ayam Bakar
+            2 x 20.000  45.000
+            """)
+
+        #expect(parsed.items.count == 2)
+        #expect(parsed.items.allSatisfy { $0.name == "Ayam Bakar" })
+        #expect(parsed.items.allSatisfy { $0.price == 20_000 })
+        #expect(parsed.items.allSatisfy { $0.needsReview }) // 2×20.000 ≠ 45.000
+    }
+
+    @Test("A held name followed by a normal item is still surfaced, not eaten")
+    func pendingNameNotEaten() {
+        let parsed = ReceiptParser.parse(text: """
+            WARUNG
+            Mie Ayam    24.000
+            Krupuk
+            Es Jeruk    8.000
+            """)
+
+        #expect(parsed.items.map(\.name) == ["Mie Ayam", "Es Jeruk"])
+        #expect(parsed.unparsedLines == ["Krupuk"])
+    }
+
+    // MARK: - Subtotal reconciliation
+
+    @Test("Reconciliation: summed items vs printed subtotal, both directions")
+    func subtotalReconciliation() {
+        let matching = ReceiptParser.parse(text: """
+            WARUNG
+            Mie Ayam    24.000
+            Es Teh      10.000
+            Subtotal    34.000
+            """)
+        #expect(matching.summedSubtotal == 34_000)
+        #expect(matching.subtotalMismatch == 0)
+
+        // Printed subtotal higher → something was missed or under-read.
+        let missing = ReceiptParser.parse(text: """
+            WARUNG
+            Mie Ayam    24.000
+            Subtotal    34.000
+            """)
+        #expect(missing.summedSubtotal == 24_000)
+        #expect(missing.subtotalMismatch == 10_000)
+
+        // No printed subtotal → nothing to check against.
+        let unchecked = ReceiptParser.parse(text: """
+            WARUNG
+            Mie Ayam    24.000
+            """)
+        #expect(unchecked.subtotalMismatch == nil)
+    }
+
     // MARK: - Structured table rows
 
     @Test("Table row with name | qty | price cells uses the structure")

@@ -23,6 +23,25 @@ public struct ParsedReceipt: Sendable, Hashable {
     public var unparsedLines: [String] = []
 
     public init() {}
+
+    // MARK: Subtotal reconciliation — the pipeline's strongest check.
+    // Per-field confidence says "Vision was unsure about this glyph";
+    // a subtotal mismatch says "the total doesn't add up" — an item was
+    // missed, double-read, or mispriced, known without any human checking.
+    // The edit screen steers attention by this, not by confidence alone.
+
+    /// Sum of the parsed line items, in whole rupiah.
+    public var summedSubtotal: Int {
+        items.reduce(0) { $0 + ($1.price ?? 0) * $1.qty }
+    }
+
+    /// `printedSubtotal - summedSubtotal`: zero when the parse reconciles,
+    /// positive when items are missing or under-read, negative when
+    /// something was double-read or over-read. nil when the receipt
+    /// printed no subtotal to check against.
+    public var subtotalMismatch: Int? {
+        printedSubtotal.map { $0 - summedSubtotal }
+    }
 }
 
 /// Pure, hardware-free receipt parser for Indonesian receipts. Input is
@@ -51,6 +70,20 @@ public enum ReceiptParser {
         var sawItem = false
         var sawTotal = false
 
+        // One item does not always equal one line: receipts split an item
+        // into a name line followed by a qty/price line ("Nasi Goreng" then
+        // "2 x 25.000"). A no-amount line is held here until the next line
+        // decides whether it was a name waiting for its price.
+        var pending: (name: String, box: NormalizedRect?, confidence: Double?, afterItems: Bool)?
+        func flushPending() {
+            // Matches the single-line behavior: price-less text between
+            // items is surfaced for manual entry; header noise is not.
+            if let p = pending, p.afterItems {
+                result.unparsedLines.append(p.name)
+            }
+            pending = nil
+        }
+
         for row in receipt.rows {
             let line = row.joinedText.trimmingCharacters(in: .whitespaces)
             guard !line.isEmpty, line.rangeOfCharacter(from: .alphanumerics) != nil else {
@@ -78,6 +111,7 @@ public enum ReceiptParser {
                 continue
             }
             if contains(lowered, any: Self.totalKeywords) {
+                flushPending()
                 sawTotal = true
                 continue
             }
@@ -88,20 +122,34 @@ public enum ReceiptParser {
             // Item rows: structured table row first, then name + trailing amount.
             if !sawTotal {
                 if case .tableRow(let cells) = row, let items = parseTableRow(cells) {
+                    flushPending()
                     result.items.append(contentsOf: items)
                     sawItem = true
                     continue
                 }
                 if let money = trailingMoney(in: line) {
                     if money.value < 0 {
+                        flushPending()
                         result.unparsedLines.append(line) // unlabeled discount
+                    } else if let p = pending, let items = parseContinuation(
+                        line: line, money: money, pendingName: p.name,
+                        box: row.box ?? p.box,
+                        confidence: [row.confidence, p.confidence].compactMap { $0 }.min()
+                    ) {
+                        // Split-line item: the previous line was the name,
+                        // this one is its qty/price.
+                        pending = nil
+                        result.items.append(contentsOf: items)
+                        sawItem = true
                     } else if let items = parseItems(
                         line: line, money: money,
                         box: row.box, confidence: row.confidence
                     ) {
+                        flushPending()
                         result.items.append(contentsOf: items)
                         sawItem = true
                     } else {
+                        flushPending()
                         result.unparsedLines.append(line)
                     }
                     continue
@@ -109,17 +157,20 @@ public enum ReceiptParser {
             }
 
             // Text without an amount.
-            if !sawItem && !sawTotal {
+            if !sawItem && !sawTotal && result.merchantName == nil {
                 // Header block: first line is the merchant, the rest
-                // (address, phone, date) is noise.
-                if result.merchantName == nil {
-                    result.merchantName = line
-                }
+                // (address, phone, date) is noise unless the next line
+                // turns out to be its price.
+                result.merchantName = line
             } else if !sawTotal {
-                result.unparsedLines.append(line) // likely an item OCR missed the price of
+                // Might be a name whose price is on the next line; held,
+                // not yet given up on.
+                flushPending()
+                pending = (line, row.box, row.confidence, sawItem)
             }
             // After the total line, footer text is ignorable.
         }
+        flushPending()
 
         resolveRates(
             into: &result,
@@ -207,6 +258,48 @@ public enum ReceiptParser {
     }
 
     // MARK: - Item lines
+
+    /// Parses the price line of a split-line item: the previous line was a
+    /// bare name, this line carries only quantity and money ("25.000",
+    /// "2 x 25.000", "2 x 25.000  50.000", "2 @25.000  50.000"). Returns
+    /// nil when the line has its own name — then it's a normal item and the
+    /// pending name was something else.
+    private static func parseContinuation(
+        line: String,
+        money: (value: Int, range: Range<String.Index>),
+        pendingName: String,
+        box: NormalizedRect?,
+        confidence: Double?
+    ) -> [DraftItem]? {
+        guard money.value >= 100 else { return nil }
+        let rest = cleaned(String(line[..<money.range.lowerBound]))
+
+        var qty = 1
+        var unitPrice = money.value
+        var needsReview = false
+
+        if rest.isEmpty {
+            // Bare price → single unit.
+        } else if let match = rest.wholeMatch(of: /(\d{1,2})\s*[xX]/), let q = Int(match.1) {
+            // "2 x 25.000" — receipt convention reads as qty × unit price.
+            // If that reading is wrong, subtotal reconciliation flags it.
+            qty = q
+        } else if let match = rest.wholeMatch(of: /(\d{1,2})\s*[xX@]\s*(?:Rp\.?\s*)?([\d.,]+)/),
+                  let q = Int(match.1), let unit = moneyValue(String(match.2)) {
+            // "2 x 25.000  [50.000]" — qty and unit, trailing money is the
+            // line total; flag when they disagree.
+            qty = q
+            unitPrice = unit
+            needsReview = unit * q != money.value
+        } else {
+            return nil // has its own name — not a continuation
+        }
+        guard qty >= 1 else { return nil }
+        return explode(
+            name: pendingName, unitPrice: unitPrice, qty: qty,
+            needsReview: needsReview, box: box, confidence: confidence
+        )
+    }
 
     private static func parseItems(
         line: String,
