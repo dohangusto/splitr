@@ -172,7 +172,7 @@ struct RoomStateMachineTests {
         }
     }
 
-    @Test("Bills can be updated and removed by the host, but only while open")
+    @Test("Bills: host updates while open or claiming, removes only while open")
     func updateAndRemoveBillRules() throws {
         var room = try Fixtures.openRoom(host: host, members: [alice])
         let bill = Bill(merchantName: "Warung", items: [BillItem(name: "Nasi", unitPrice: 20_000)])
@@ -207,15 +207,22 @@ struct RoomStateMachineTests {
         #expect(room.bill(withID: bill.id)?.merchantName == "Warung Bu Sri")
         #expect(room.bill(withID: bill.id)?.subtotal == 25_000)
 
-        // Once claiming starts, bills are frozen for edit/remove.
+        // During claiming the host can still fix a bill (wrong price spotted
+        // mid-claim) — but not remove one out from under claimers.
         try room.advance(by: host.id)
-        #expect(throws: RoomError.billEditingNotAllowed(.claiming)) {
-            var copy = room
-            try copy.updateBill(edited, by: host.id)
-        }
+        edited.merchantName = "Warung Bu Sri Rev"
+        try room.updateBill(edited, by: host.id)
+        #expect(room.bill(withID: bill.id)?.merchantName == "Warung Bu Sri Rev")
         #expect(throws: RoomError.billEditingNotAllowed(.claiming)) {
             var copy = room
             try copy.removeBill(withID: bill.id, by: host.id)
+        }
+
+        // From settling on, bills are frozen entirely.
+        try room.advance(by: host.id)
+        #expect(throws: RoomError.billEditingNotAllowed(.settling)) {
+            var copy = room
+            try copy.updateBill(edited, by: host.id)
         }
 
         // Removal works while open.

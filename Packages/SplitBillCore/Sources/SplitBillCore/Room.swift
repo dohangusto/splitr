@@ -153,8 +153,10 @@ public struct Room: Identifiable, Sendable, Hashable, Codable {
     }
 
     /// Replaces an existing bill wholesale (OCR corrections, wrong prices).
-    /// Only while the room is `.open` — once claiming starts, items carry
-    /// claims that a wholesale replacement would silently orphan.
+    /// Allowed while `.open` or `.claiming` — a wrong price is often only
+    /// spotted once people start claiming. The caller is responsible for
+    /// carrying existing claims into the replacement items; this method
+    /// replaces wholesale and will not resurrect them.
     public mutating func updateBill(_ bill: Bill, by actorID: UUID) throws {
         try requireHost(actorID)
         guard state == .open || state == .claiming else {
@@ -167,7 +169,7 @@ public struct Room: Identifiable, Sendable, Hashable, Codable {
     }
 
     /// Removes a bill entirely (e.g. scanned the wrong receipt).
-    /// Same window as `updateBill`: `.open` only.
+    /// `.open` only — never out from under claimers.
     public mutating func removeBill(withID billID: UUID, by actorID: UUID) throws {
         try requireHost(actorID)
         guard state == .open else {

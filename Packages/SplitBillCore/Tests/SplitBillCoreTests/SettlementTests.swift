@@ -248,6 +248,96 @@ struct SettlementTests {
         #expect(settlement.settlement(for: host.id)?.totalOwed == 0)
     }
 
+    // MARK: - Per-bill remainder rule (settled product decision)
+
+    /// Pins the decision that split remainders are absorbed **per bill**,
+    /// never summed across bills and rounded once at room level. Each of
+    /// two identical bills has one Rp 5.001 item split evenly between Bob
+    /// and the host: Bob's exact share is 2.500,5 per bill.
+    ///
+    /// Per-bill rule → Bob pays floor(2.500,5) = 2.500 twice = 5.000, the
+    /// host absorbs 1 rupiah in each bill (2 total). A room-level rounding
+    /// would see Bob's exact 2.500,5 + 2.500,5 = 5.001 and absorb nothing —
+    /// so 5.000 vs 5.001 is exactly the difference this test defends. Bills
+    /// are independent; each reconciles alone like the paper it came from.
+    /// Do not "improve" this to round once per room (see CLAUDE.md).
+    @Test("Remainders are absorbed per bill, not once per room")
+    func perBillRemainderAbsorption() throws {
+        let host = Fixtures.host()
+        let bob = Fixtures.member("Bob")
+        var room = try Fixtures.openRoom(host: host, members: [bob])
+
+        func halfAndHalfBill(_ name: String) -> Bill {
+            let itemID = UUID()
+            let item = BillItem(id: itemID, name: "Sate", unitPrice: 5_001,
+                                claimState: .claimed([
+                                    Claim(itemID: itemID, memberID: bob.id, portion: Fraction(1, 2)),
+                                    Claim(itemID: itemID, memberID: host.id, portion: Fraction(1, 2)),
+                                ]))
+            return Bill(merchantName: name, items: [item])
+        }
+        try room.addBill(halfAndHalfBill("Warung"), by: host.id)
+        try room.addBill(halfAndHalfBill("Kafe"), by: host.id)
+
+        // Each bill reconciles alone: Bob floors, the host absorbs 1.
+        for bill in room.bills {
+            let single = try SettlementCalculator.settle(
+                bill: bill, memberIDs: [host.id, bob.id], hostMemberID: host.id
+            )
+            #expect(single.settlement(for: bob.id)?.totalOwed == 2_500)
+            #expect(single.settlement(for: host.id)?.totalOwed == 2_501)
+            #expect(single.roundingRemainder == 1)
+        }
+
+        // The room is the sum of the already-rounded bills — nothing lost,
+        // nothing invented, and NOT the 5.001 a room-level rounding of
+        // Bob's exact total would produce.
+        let settlement = try SettlementCalculator.settle(room: room)
+        #expect(settlement.settlement(for: bob.id)?.totalOwed == 5_000)
+        #expect(settlement.settlement(for: host.id)?.totalOwed == 5_002)
+        #expect(settlement.roundingRemainder == 2)
+        #expect(settlement.grandTotal == 10_002)
+        let sum = settlement.memberSettlements.reduce(0) { $0 + $1.totalOwed }
+        #expect(sum == settlement.grandTotal)
+    }
+
+    @Test("Single claimant owes the exact bill total; nothing to absorb")
+    func singleClaimant() throws {
+        // Odd subtotal + 10% tax: totals round at the bill level (half-up,
+        // like the printed receipt), then the sole claimant owes all of it.
+        let bill = Bill(merchantName: "Warung", taxRate: .percent(10),
+                        items: [claimedItem(price: 10_001, by: bobID)])
+        let settlement = try SettlementCalculator.settle(
+            bill: bill, memberIDs: [hostID, bobID], hostMemberID: hostID
+        )
+        #expect(settlement.taxTotal == 1_000) // half-up of 1.000,1
+        #expect(settlement.settlement(for: bobID)?.totalOwed == 11_001)
+        #expect(settlement.settlement(for: hostID)?.totalOwed == 0)
+        #expect(settlement.roundingRemainder == 0)
+    }
+
+    @Test("Everyone on one item: floors for members, host absorbs the crumb")
+    func everyoneOnOneItem() throws {
+        let itemID = UUID()
+        let item = BillItem(id: itemID, name: "Kentang", unitPrice: 10_000,
+                            claimState: .claimed([
+                                Claim(itemID: itemID, memberID: hostID, portion: Fraction(1, 3)),
+                                Claim(itemID: itemID, memberID: bobID, portion: Fraction(1, 3)),
+                                Claim(itemID: itemID, memberID: caraID, portion: Fraction(1, 3)),
+                            ]))
+        let bill = Bill(merchantName: "Warung", items: [item])
+        let settlement = try SettlementCalculator.settle(
+            bill: bill, memberIDs: [hostID, bobID, caraID], hostMemberID: hostID
+        )
+        // 10.000 / 3 = 3.333,3̅ — members pay the floor, host takes the rest.
+        #expect(settlement.settlement(for: bobID)?.totalOwed == 3_333)
+        #expect(settlement.settlement(for: caraID)?.totalOwed == 3_333)
+        #expect(settlement.settlement(for: hostID)?.totalOwed == 3_334)
+        #expect(settlement.roundingRemainder == 1)
+        let sum = settlement.memberSettlements.reduce(0) { $0 + $1.totalOwed }
+        #expect(sum == 10_000)
+    }
+
     // MARK: - Property: totals always reconcile
 
     @Test("Randomized claims: member totals always sum to the exact bill total",
