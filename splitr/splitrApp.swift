@@ -40,7 +40,7 @@ struct splitrApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RoomListView(store: AppComposition.store)
+            HomePageView(store: AppComposition.store)
         }
     }
 }
