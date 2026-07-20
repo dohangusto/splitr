@@ -6,50 +6,44 @@
 //
 
 import SwiftUI
+import SplitBillCore
 
-struct BillDetailItem: Identifiable, Equatable {
-    let id = UUID()
-    var name: String
-    var quantity: Int
-    var price: String
-}
-
+/// One bill, rendered from Core. Amounts (tax, service, total) are Core's
+/// per-bill computed values — never recomputed here. Editing routes to the
+/// existing rate-based edit flow via `onEdit`; the card itself is display.
 struct BillDetailCard: View {
 
-    @State private var isEditing = false
+    let bill: Bill
+    /// Bills are editable only while the room is `.open` (host-only).
+    var canEdit: Bool = false
+    var onEdit: () -> Void = {}
 
-    @State private var billTitle = "Alfamart bill"
+    /// Core stores one row per claimable unit; for display, identical units
+    /// regroup into a "x qty" line like the printed receipt.
+    private struct DisplayLine: Identifiable {
+        let id = UUID()
+        let name: String
+        let quantity: Int
+        let unitPrice: Int
+    }
 
-    @State private var items: [BillDetailItem] = [
-        BillDetailItem(
-            name: "Cimory hazelnut",
-            quantity: 1,
-            price: "9,000"
-        ),
-        BillDetailItem(
-            name: "Cimory hazelnut",
-            quantity: 1,
-            price: "9,000"
-        ),
-        BillDetailItem(
-            name: "Cimory hazelnut",
-            quantity: 1,
-            price: "9,000"
-        )
-    ]
-
-    @State private var tax = "8,000"
-    @State private var service = "0"
-    @State private var discount = "0"
-    @State private var subtotal = "34,000"
-
-    private var isFormValid: Bool {
-        !items.isEmpty && items.allSatisfy { item in
-            !item.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-            !item.price.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-            (Int(item.price.filter { "0"..."9" ~= $0 }) ?? 0) > 0 &&
-            item.quantity > 0
+    private var lines: [DisplayLine] {
+        var result: [DisplayLine] = []
+        for item in bill.items {
+            if let index = result.firstIndex(where: {
+                $0.name == item.name && $0.unitPrice == item.unitPrice
+            }) {
+                let existing = result[index]
+                result[index] = DisplayLine(
+                    name: existing.name,
+                    quantity: existing.quantity + 1,
+                    unitPrice: existing.unitPrice
+                )
+            } else {
+                result.append(DisplayLine(name: item.name, quantity: 1, unitPrice: item.unitPrice))
+            }
         }
+        return result
     }
 
     var body: some View {
@@ -57,160 +51,78 @@ struct BillDetailCard: View {
 
             // MARK: - Bill Title
 
-            if isEditing {
-                TextField("Bill name", text: $billTitle)
-                    .font(.title3)
-                    .foregroundStyle(.primary)
-                    .padding(.bottom, 20)
-            } else {
-                Text(billTitle)
-                    .font(.title3)
-                    .foregroundStyle(.secondary)
-                    .padding(.bottom, 20)
-            }
+            Text(bill.merchantName)
+                .font(.title3)
+                .foregroundStyle(.secondary)
+                .padding(.bottom, 20)
 
 
             // MARK: - Bill Items
 
             VStack(spacing: 0) {
 
-                ForEach($items) { $item in
+                ForEach(lines) { line in
 
-                    if isEditing {
+                    BillItemRow(
+                        name: line.name,
+                        quantity: line.quantity,
+                        price: (line.unitPrice * line.quantity).rupiah
+                    )
 
-                        EditableBillItemRow(
-                            name: $item.name,
-                            quantity: $item.quantity,
-                            price: $item.price,
-                            onDelete: {
-                                withAnimation {
-                                    items.removeAll { $0.id == item.id }
-                                }
-                            }
-                        )
-
-                    } else {
-
-                        BillItemRow(
-                            name: item.name,
-                            quantity: item.quantity,
-                            price: item.price
-                        )
-                    }
-
-                    if item.id != items.last?.id {
+                    if line.id != lines.last?.id {
                         Divider()
                             .padding(.vertical, 16)
                     }
                 }
             }
 
-
-            // MARK: - Add Item
-
-            if isEditing {
-
-                Button {
-                    addItem()
-                } label: {
-                    HStack(spacing: 8) {
-
-                        Image(systemName: "plus")
-
-                        Text("Add item")
-                    }
-                    .font(.headline)
-                    .foregroundStyle(.blue)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 50)
-                }
-                .buttonStyle(.plain)
-                .padding(.top, 16)
-
-                Divider()
-                    .padding(.vertical, 20)
-            } else {
-
-                Divider()
-                    .padding(.vertical, 16)
-            }
+            Divider()
+                .padding(.vertical, 16)
 
 
             // MARK: - Bill Summary
+            // No "Diskon" row: discount is not a Core concept (yet).
 
             VStack(spacing: 24) {
 
-                EditableSummaryRow(
-                    title: "Pajak",
-                    value: $tax,
-                    isEditing: isEditing
-                )
+                SummaryRow(title: "Pajak", value: bill.taxTotal.rupiah)
 
-                EditableSummaryRow(
-                    title: "Servis",
-                    value: $service,
-                    isEditing: isEditing
-                )
+                SummaryRow(title: "Servis", value: bill.serviceChargeTotal.rupiah)
 
-                EditableSummaryRow(
-                    title: "Diskon",
-                    value: $discount,
-                    isEditing: isEditing
-                )
-
-                EditableSummaryRow(
-                    title: "Subtotal",
-                    value: $subtotal,
-                    isEditing: isEditing
-                )
+                SummaryRow(title: "Subtotal", value: bill.grandTotal.rupiah)
             }
 
 
-            // MARK: - Edit / Done Button
+            // MARK: - Edit Button
 
-            Button {
+            if canEdit {
+                Button {
+                    onEdit()
+                } label: {
 
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    isEditing.toggle()
+                    HStack(spacing: 12) {
+
+                        Image(systemName: "pencil")
+                            .font(.system(size: 20))
+
+                        Text("Edit details")
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 56)
+                    .background(Color.white)
+                    .overlay {
+                        RoundedRectangle(
+                            cornerRadius: 28,
+                            style: .continuous
+                        )
+                        .stroke(Color(.systemGray5), lineWidth: 1)
+                    }
                 }
-
-            } label: {
-
-                HStack(spacing: 12) {
-
-                    Image(
-                        systemName:
-                            isEditing
-                            ? "checkmark"
-                            : "pencil"
-                    )
-                    .font(.system(size: 20))
-
-                    Text(
-                        isEditing
-                        ? "Done"
-                        : "Edit details"
-                    )
-                    .font(.headline)
-                    .foregroundStyle(isEditing && !isFormValid ? .secondary : .primary)
-                }
-                .frame(maxWidth: .infinity)
-                .frame(height: 56)
-                .background(isEditing && !isFormValid ? Color(.systemGray6) : Color.white)
-                .overlay {
-                    RoundedRectangle(
-                        cornerRadius: 28,
-                        style: .continuous
-                    )
-                    .stroke(
-                        isEditing && !isFormValid ? Color.clear : Color(.systemGray5),
-                        lineWidth: 1
-                    )
-                }
+                .buttonStyle(.plain)
+                .padding(.top, 24)
             }
-            .buttonStyle(.plain)
-            .padding(.top, 24)
-            .disabled(isEditing && !isFormValid)
         }
         .padding(24)
         .frame(
@@ -224,54 +136,6 @@ struct BillDetailCard: View {
                 style: .continuous
             )
         )
-        .onAppear {
-            recalculateSummary()
-        }
-        .onChange(of: items) { _, _ in
-            recalculateSummary()
-        }
-        .onChange(of: service) { _, _ in
-            recalculateSummary()
-        }
-    }
-
-
-    // MARK: - Add Item
-
-    private func addItem() {
-
-        let newItem = BillDetailItem(
-            name: "",
-            quantity: 1,
-            price: ""
-        )
-
-        withAnimation {
-            items.append(newItem)
-        }
-    }
-
-    private func parsePrice(_ priceString: String) -> Int {
-        let cleaned = priceString.filter { "0"..."9" ~= $0 }
-        return Int(cleaned) ?? 0
-    }
-
-    private func formatRupiah(_ value: Int) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.groupingSeparator = ","
-        return formatter.string(from: NSNumber(value: value)) ?? "\(value)"
-    }
-
-    private func recalculateSummary() {
-        let subtotalInt = items.reduce(0) { total, item in
-            total + (item.quantity * parsePrice(item.price))
-        }
-        let serviceInt = parsePrice(service)
-        let taxInt = (subtotalInt + serviceInt) * 10 / 100
-
-        subtotal = formatRupiah(subtotalInt)
-        tax = formatRupiah(taxInt)
     }
 }
 
@@ -308,85 +172,12 @@ private struct BillItemRow: View {
 }
 
 
-// MARK: - Editable Bill Item Row
-
-private struct EditableBillItemRow: View {
-
-    @Binding var name: String
-    @Binding var quantity: Int
-    @Binding var price: String
-    let onDelete: () -> Void
-
-    var body: some View {
-
-        HStack(spacing: 12) {
-
-            Button(role: .destructive) {
-                onDelete()
-            } label: {
-                Image(systemName: "minus.circle.fill")
-                    .foregroundStyle(.red)
-                    .font(.title3)
-            }
-            .buttonStyle(.plain)
-
-            // Item Name
-
-            TextField(
-                "Item name",
-                text: $name
-            )
-            .font(.headline)
-
-
-            Spacer()
-
-
-            // Quantity
-
-            HStack(spacing: 2) {
-
-                Text("x")
-                    .foregroundStyle(.secondary)
-
-                TextField(
-                    "1",
-                    value: $quantity,
-                    format: .number
-                )
-                .keyboardType(.numberPad)
-                .multilineTextAlignment(.center)
-                .frame(width: 30)
-            }
-
-
-            Spacer()
-
-
-            // Price
-
-            TextField(
-                "Price",
-                text: $price
-            )
-            .font(.headline)
-            .keyboardType(.numberPad)
-            .multilineTextAlignment(.trailing)
-            .frame(width: 80)
-        }
-    }
-}
-
-
 // MARK: - Bill Summary Row
 
-private struct EditableSummaryRow: View {
+private struct SummaryRow: View {
 
     let title: String
-
-    @Binding var value: String
-
-    let isEditing: Bool
+    let value: String
 
     var body: some View {
 
@@ -398,23 +189,9 @@ private struct EditableSummaryRow: View {
 
             Spacer()
 
-            if isEditing {
-
-                TextField(
-                    "0",
-                    text: $value
-                )
+            Text(value)
                 .font(.headline)
-                .keyboardType(.numberPad)
-                .multilineTextAlignment(.trailing)
-                .frame(width: 100)
-
-            } else {
-
-                Text(value)
-                    .font(.headline)
-                    .foregroundStyle(.primary)
-            }
+                .foregroundStyle(.primary)
         }
     }
 }
@@ -435,8 +212,11 @@ private struct EditableSummaryRow: View {
 
         ScrollView {
 
-            BillDetailCard()
-                .padding(20)
+            BillDetailCard(
+                bill: MockData.rooms()[0].bills.first ?? Bill(merchantName: "Alfamart bill"),
+                canEdit: true
+            )
+            .padding(20)
         }
     }
 }

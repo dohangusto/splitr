@@ -99,15 +99,8 @@ public enum SettlementCalculator {
         // Service charge always applies to the subtotal; the tax basis decides
         // whether PB1 applies to the subtotal alone or to subtotal + service.
         let billSubtotal = bill.subtotal
-        let serviceTotal = (bill.serviceChargeRate.fraction * billSubtotal).roundedHalfUpValue
-        let taxBase: Int
-        switch bill.taxBasis {
-        case .subtotal:
-            taxBase = billSubtotal
-        case .subtotalPlusService:
-            taxBase = billSubtotal + serviceTotal
-        }
-        let taxTotal = (bill.taxRate.fraction * taxBase).roundedHalfUpValue
+        let serviceTotal = bill.serviceChargeTotal
+        let taxTotal = bill.taxTotal
         let grandTotal = billSubtotal + taxTotal + serviceTotal
 
         // Proportional shares: member share of tax = taxTotal * subtotal_m / S.

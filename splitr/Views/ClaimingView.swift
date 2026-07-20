@@ -93,16 +93,7 @@ struct ClaimingView: View {
     /// after the Examples' DemoInfoCard: it informs — every claim action
     /// stays on the item rows it belongs to.
     private func runningTotalCard(_ room: Room, actingID: UUID) -> some View {
-        let mine = room.claims(for: actingID)
-        let subtotal = mine
-            .reduce(Fraction.zero) { total, claim in
-                let price = room.bills
-                    .lazy
-                    .compactMap { $0.item(withID: claim.itemID) }
-                    .first?.unitPrice ?? 0
-                return total + claim.portion * price
-            }
-            .flooredValue
+        let subtotal = room.claimedSubtotal(for: actingID)
         return HStack(alignment: .top, spacing: 8) {
             Image(systemName: "hand.tap")
                 .foregroundStyle(.tint)
