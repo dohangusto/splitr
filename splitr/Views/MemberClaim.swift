@@ -54,7 +54,7 @@ struct DashedDivider: View {
     }
 }
 
-struct CheckboxButton: View {
+struct CheckboxButton: View {   
     @Binding var isChecked: Bool
     
     var body: some View {
@@ -170,66 +170,86 @@ struct MemberClaim: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            ScrollView {
-                VStack(spacing: 16) {
-                    ForEach($bills) { $bill in
-                        VStack(spacing: 0) {
-                            // MARK: header disclosure
-                            Button(action: { bill.isExpanded.toggle() }) {
-                                HStack {
-                                    Text(bill.merchantName)
-                                        .font(.title3)
-                                        .bold(true)
-                                        .foregroundStyle(Color.primary)
-                                    Spacer()
-                                    Image(systemName: "chevron.down")
-                                        .rotationEffect(.degrees(bill.isExpanded ? 180 : 0))
-                                        .foregroundStyle(Color.secondary)
+            ZStack(alignment: .top) {
+                ScrollView {
+                    VStack(spacing: 16) {
+                        ForEach($bills) { $bill in
+                            VStack(spacing: 0) {
+                                // MARK: header disclosure
+                                Button(action: { bill.isExpanded.toggle() }) {
+                                    HStack {
+                                        Text(bill.merchantName)
+                                            .font(.title3)
+                                            .bold(true)
+                                            .foregroundStyle(Color.primary)
+                                        Spacer()
+                                        Image(systemName: "chevron.down")
+                                            .rotationEffect(.degrees(bill.isExpanded ? 180 : 0))
+                                            .foregroundStyle(Color.secondary)
+                                    }
                                 }
-                            }
-                            .padding(.horizontal)
-                            .padding(.top)
-                            .padding(.bottom, bill.isExpanded ? 8 : 20)
-                            
-                            if bill.isExpanded {
-                                // list item + dashed divider
-                                ForEach($bill.items) { $item in
-                                    MenuItemRow(item: $item)
-                                        .padding(.horizontal)
-                                    DashedDivider()
-                                        .padding(.horizontal)
-                                }
+                                .padding(.horizontal)
+                                .padding(.top)
+                                .padding(.bottom, bill.isExpanded ? 8 : 20)
                                 
-                                // MARK: summary rows
-                                VStack(spacing: 12) {
-                                    summaryRow(label: "Pajak", value: bill.tax)
-                                    summaryRow(label: "Servis", value: bill.service)
-                                    summaryRow(label: "Diskon", value: bill.discount)
-                                    summaryRow(label: "Subtotal", value: bill.subtotal, weight: .semibold)
+                                if bill.isExpanded {
+                                    // list item + dashed divider
+                                    ForEach($bill.items) { $item in
+                                        MenuItemRow(item: $item)
+                                            .padding(.horizontal)
+                                        DashedDivider()
+                                            .padding(.horizontal)
+                                    }
+                                    
+                                    // MARK: summary rows
+                                    VStack(spacing: 12) {
+                                        summaryRow(label: "Pajak", value: bill.tax)
+                                        summaryRow(label: "Servis", value: bill.service)
+                                        summaryRow(label: "Diskon", value: bill.discount)
+                                        summaryRow(label: "Subtotal", value: bill.subtotal, weight: .semibold)
+                                    }
+                                    .padding()
                                 }
-                                .padding()
                             }
+                            .background(Color.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 20))
+                            .shadow(color: .black.opacity(0.05), radius: 8, y: 2)
                         }
-                        .background(Color.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 20))
-                        .shadow(color: .black.opacity(0.05), radius: 8, y: 2)
                     }
+                    .padding()
+                    .padding(.top, 80)
                 }
-                .padding()
+                
+                VStack(spacing: 0) {
+                    NavigationHeader(title: "Claim Item")
+                        .padding(.horizontal, 24)
+                        .padding(.top, 10)
+                        .padding(.bottom, 8)
+                        .background(Color(red: 0.90, green: 0.92, blue: 0.99).ignoresSafeArea(edges: .top))
+                    
+                    LinearGradient(
+                        gradient: Gradient(colors: [
+                            Color(red: 0.90, green: 0.92, blue: 0.99),
+                            Color(red: 0.90, green: 0.92, blue: 0.99).opacity(0)
+                        ]),
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: 24)
+                }
             }
             
             // MARK: Bottom Sticky Confirmation Footer
-            VStack(alignment: .leading, spacing: 16) {
-                VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 16) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text("Your \(totalCheckedCount) item total")
-                        .font(.subheadline)
+                        .font(.caption)
                         .foregroundColor(.secondary)
                     Text(totalCheckedPrice.formattedWithSeparator)
-                        .font(.title.bold())
+                        .font(.title2.bold())
                         .foregroundColor(.primary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 12)
                 
                 Button(action: {
                     // Konfirmasi action
@@ -237,7 +257,7 @@ struct MemberClaim: View {
                     Text("Confirmation")
                         .font(.headline)
                         .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
+                        .frame(width: 160)
                         .padding(.vertical, 16)
                         .background(
                             LinearGradient(
@@ -250,30 +270,17 @@ struct MemberClaim: View {
                 }
             }
             .padding(.horizontal, 24)
-            .padding(.top, 24)
+            .padding(.top, 16)
             .padding(.bottom, 12) // Penyeimbang padding agar menyatu dengan safe area bottom
             .background(
                 Color.white
-                    .clipShape(RoundedCorner(radius: 32, corners: [.topLeft, .topRight]))
+                    .clipShape(RoundedCorner(radius: 24, corners: [.topLeft, .topRight]))
                     .ignoresSafeArea(edges: .bottom)
             )
             .shadow(color: Color.black.opacity(0.06), radius: 10, x: 0, y: -5)
         }
         .background(Color(red: 0.90, green: 0.92, blue: 0.99).ignoresSafeArea())
-        .navigationTitle("Split bill")
-        .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button(action: { dismiss() }) {
-                    Image(systemName: "chevron.left")
-                        .foregroundColor(.black)
-                        .padding(10)
-                        .background(Color.white)
-                        .clipShape(Circle())
-                }
-            }
-        }
     }
     
     // helper buat baris Pajak/Servis/Diskon/Subtotal
