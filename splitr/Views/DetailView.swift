@@ -10,16 +10,18 @@ struct DetailView: View {
     @State private var billName = ""
 
     @State private var people = [
-        "avatar1",
-        "avatar2",
-        "avatar3",
-        "avatar4"
+        Person(name: "Hano Ngoding", avatar: "avatar1"),
+        Person(name: "Noorfi Github", avatar: "avatar2"),
+        Person(name: "Husni Ilustrator", avatar: "avatar3"),
+        Person(name: "Bray Layout", avatar: "avatar4")
     ]
 
     @State private var receiptPhotos = [
         "receipt1",
         "receipt2"
     ]
+
+    @State private var showingPeopleList = false
 
     var body: some View {
         ZStack {
@@ -45,8 +47,8 @@ struct DetailView: View {
                     )
 
                     // People
-                    PeopleCard(people: people) {
-                        print("Tambah orang")
+                    PeopleCard(people: people.map { $0.avatar }) {
+                        showingPeopleList = true
                     }
 
                     // Bills Photo
@@ -93,6 +95,9 @@ struct DetailView: View {
             .background(Color.white)
         }
         .navigationBarBackButtonHidden(true)
+        .sheet(isPresented: $showingPeopleList) {
+            PeopleListSheet(people: $people)
+        }
     }
 }
 
