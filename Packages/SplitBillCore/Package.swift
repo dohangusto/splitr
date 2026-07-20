@@ -3,6 +3,9 @@ import PackageDescription
 
 let package = Package(
     name: "SplitBillCore",
+    platforms: [
+        .iOS(.v18), .macOS(.v15) // matches SplitBillSync; regex literals need modern floors
+    ],
     products: [
         .library(name: "SplitBillCore", targets: ["SplitBillCore"])
     ],

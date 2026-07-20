@@ -16,6 +16,9 @@ import SplitBillSync
 final class CloudKitRoomStore: RoomStoring {
     private(set) var rooms: [Room] = []
     var alert: StoreAlert?
+    /// True until the first fetch settles (success or failure), so launch
+    /// shows "loading" instead of a false "no rooms yet".
+    private(set) var isLoadingRooms = true
 
     private var actingByRoom: [UUID: UUID] = [:]
     private let sync: any RoomSyncService
@@ -36,6 +39,7 @@ final class CloudKitRoomStore: RoomStoring {
         } catch {
             alert = StoreAlert(message: "Couldn't reach iCloud. Your changes will not sync yet.")
         }
+        isLoadingRooms = false
         for await update in sync.updates {
             if case .rooms(let serverRooms) = update {
                 rooms = serverRooms
@@ -102,6 +106,16 @@ final class CloudKitRoomStore: RoomStoring {
         mutate(roomID) { room, actor in try room.addBill(bill, by: actor) }
     }
 
+    // Full-room push diffs against the cached records, so replaced or
+    // removed items become CKRecord deletes — no orphans left in the zone.
+    func updateBill(_ bill: Bill, roomID: UUID) {
+        mutate(roomID) { room, actor in try room.updateBill(bill, by: actor) }
+    }
+
+    func removeBill(billID: UUID, roomID: UUID) {
+        mutate(roomID) { room, actor in try room.removeBill(withID: billID, by: actor) }
+    }
+
     func claim(itemID: UUID, billID: UUID, roomID: UUID) {
         mutate(roomID, persist: .claim(billID: billID, itemID: itemID)) { room, actor in
             try room.claim(itemID: itemID, in: billID, as: actor)
@@ -135,6 +149,14 @@ final class CloudKitRoomStore: RoomStoring {
     }
 
     // MARK: - Sharing & push entry points (beyond RoomStoring)
+
+    /// Pre-create hosting check for the Home screen: returns the actionable
+    /// message when this account can't host (quota, managed Apple ID, not
+    /// signed in, …), nil when hosting looks healthy. Joining is unaffected.
+    func hostingIssueMessage() async -> String? {
+        guard let issue = await sync.hostingIssue() else { return nil }
+        return Self.hostingMessage(for: issue, ckCode: nil)
+    }
 
     /// Host-side: the CKShare invitation URL for a room.
     func inviteURL(roomID: UUID) async -> URL? {

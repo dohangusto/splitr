@@ -11,12 +11,32 @@ struct AddBillView: View {
     /// Present when reviewing a scanned receipt; nil for manual entry.
     var scan: ParsedReceipt? = nil
 
+    var body: some View {
+        NavigationStack {
+            AddBillForm(store: store, roomID: roomID, scan: scan)
+        }
+    }
+}
+
+/// The bill form without its own `NavigationStack`, so the scan flow can
+/// host it inside its stack — a sheet must keep one stable stack across
+/// phase changes or in-flight picker dismissals tear the whole sheet down.
+struct AddBillForm: View {
+    let store: any RoomStoring
+    let roomID: UUID
+    var scan: ParsedReceipt? = nil
+    /// Present when editing an already-saved bill (room still `.open`).
+    var existingBill: Bill? = nil
+    /// The captured receipt image, passed in-memory by the scan flow.
+    var photo: UIImage? = nil
+
     @Environment(\.dismiss) private var dismiss
     @State private var merchant = ""
     @State private var taxPercent = 10
     @State private var servicePercent = 5
     @State private var taxBasis: TaxBasis = .subtotalPlusService
     @State private var items: [DraftItem] = [DraftItem()]
+    @State private var displayedPhoto: UIImage?
 
     private var validItems: [DraftItem] {
         items.filter {
@@ -28,80 +48,116 @@ struct AddBillView: View {
         validItems.reduce(0) { $0 + ($1.price ?? 0) * $1.qty }
     }
 
+    private var isReadOnly: Bool {
+        let state = store.room(withID: roomID)?.state
+        return state != .open && state != .claiming
+    }
+
     var body: some View {
-        NavigationStack {
-            Form {
-                if scan != nil {
-                    Section {
-                        Label {
-                            Text("Scanned — please verify. Check every name and price against the paper receipt before saving.")
-                                .font(.subheadline)
-                        } icon: {
-                            Image(systemName: "doc.viewfinder")
-                        }
-                        .foregroundStyle(.orange)
-                    }
-                }
+        VStack(spacing: 0) {
+            // The photo stays pinned above the form the whole time, so
+            // correcting OCR mistakes never means leaving the edit screen.
+            if let displayedPhoto {
+                ReceiptPhotoPane(image: displayedPhoto)
+            }
+            billForm
+        }
+    }
 
-                Section("Merchant") {
-                    TextField("Merchant name", text: $merchant)
-                }
-
-                Section("Line items") {
-                    ForEach($items) { $item in
-                        DraftItemRow(item: $item)
-                    }
-                    .onDelete { items.remove(atOffsets: $0) }
-                    Button {
-                        items.append(DraftItem())
-                    } label: {
-                        Label("Add Item", systemImage: "plus.circle")
-                    }
-                }
-
-                Section("Tax & service") {
-                    Stepper("PB1 tax: \(taxPercent)%", value: $taxPercent, in: 0...20)
-                    Stepper("Service charge: \(servicePercent)%", value: $servicePercent, in: 0...15)
-                    Picker("Tax applies to", selection: $taxBasis) {
-                        Text("Subtotal + service").tag(TaxBasis.subtotalPlusService)
-                        Text("Subtotal only").tag(TaxBasis.subtotal)
-                    }
-                }
-
-                if let scan, !scan.unparsedLines.isEmpty {
-                    Section {
-                        ForEach(scan.unparsedLines, id: \.self) { line in
-                            Text(line)
-                                .font(.callout.monospaced())
-                                .foregroundStyle(.secondary)
-                        }
-                    } header: {
-                        Text("Couldn't read these lines")
-                    } footer: {
-                        Text("Add them as items above if they belong on the bill.")
-                    }
-                }
-
+    private var billForm: some View {
+        Form {
+            if scan != nil {
                 Section {
-                    LabeledContent("Subtotal", value: subtotal.rupiah)
-                } footer: {
-                    Text("Each unit of a quantity becomes its own claimable row — friends claim per portion.")
+                    Label {
+                        Text("Check items against the receipt before saving.")
+                            .font(.subheadline)
+                    } icon: {
+                        Image(systemName: "doc.viewfinder")
+                    }
+                    .foregroundStyle(.orange)
                 }
             }
-            .navigationTitle(scan == nil ? "Add Bill" : "Review Scan")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+
+            Section("Merchant") {
+                TextField("Merchant name", text: $merchant)
+            }
+
+            Section {
+                ForEach($items) { $item in
+                    DraftItemRow(item: $item)
+                        .contextMenu {
+                            Button(role: .destructive) {
+                                items.removeAll { $0.id == item.id }
+                            } label: {
+                                Label("Delete Item", systemImage: "trash")
+                            }
+                        }
+                }
+                .onDelete { items.remove(atOffsets: $0) }
+                Button {
+                    items.append(DraftItem())
+                } label: {
+                    Label("Add Item", systemImage: "plus.circle")
+                }
+            } header: {
+                Text("Line items")
+            }
+
+            Section("Tax & service") {
+                Stepper("PB1 tax: \(taxPercent)%", value: $taxPercent, in: 0...20)
+                Stepper("Service charge: \(servicePercent)%", value: $servicePercent, in: 0...15)
+                Picker("Tax applies to", selection: $taxBasis) {
+                    Text("Subtotal + service").tag(TaxBasis.subtotalPlusService)
+                    Text("Subtotal only").tag(TaxBasis.subtotal)
+                }
+            }
+
+            if let scan, !scan.unparsedLines.isEmpty {
+                Section {
+                    ForEach(scan.unparsedLines, id: \.self) { line in
+                        Text(line)
+                            .font(.callout.monospaced())
+                            .foregroundStyle(.secondary)
+                    }
+                } header: {
+                    Text("Couldn't read these lines")
+                } footer: {
+                    Text("Add them as items above if they belong on the bill.")
+                }
+            }
+
+            Section {
+                LabeledContent("Subtotal", value: subtotal.rupiah)
+            }
+        }
+        .disabled(isReadOnly)
+        .navigationTitle(existingBill != nil ? (isReadOnly ? "View Bill" : "Edit Bill") : scan == nil ? "Add Bill" : "Review Scan")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                if isReadOnly {
+                    Button("Done") { dismiss() }
+                } else {
                     Button("Cancel") { dismiss() }
                 }
-                ToolbarItem(placement: .confirmationAction) {
+            }
+            ToolbarItem(placement: .confirmationAction) {
+                if !isReadOnly {
                     Button("Save") { save() }
                         .disabled(merchant.trimmingCharacters(in: .whitespaces).isEmpty
                             || validItems.isEmpty)
                 }
             }
-            .onAppear {
-                guard let scan else { return }
+        }
+        .onAppear {
+            displayedPhoto = photo ?? ReceiptPhotoStore.load(existingBill?.photoReference)
+            if let existingBill {
+                merchant = existingBill.merchantName
+                taxPercent = existingBill.taxRate.basisPoints / 100
+                servicePercent = existingBill.serviceChargeRate.basisPoints / 100
+                taxBasis = existingBill.taxBasis
+                items = Self.drafts(from: existingBill)
+            } else if let scan {
                 merchant = scan.merchantName ?? ""
                 taxPercent = scan.taxPercent ?? taxPercent
                 servicePercent = scan.servicePercent ?? 0
@@ -123,15 +179,49 @@ struct AddBillView: View {
                 )
             }
         }
-        let bill = Bill(
-            merchantName: merchant.trimmingCharacters(in: .whitespaces),
-            taxRate: .percent(taxPercent),
-            serviceChargeRate: .percent(servicePercent),
-            taxBasis: taxBasis,
-            items: billItems
-        )
-        store.addBill(bill, roomID: roomID)
+        if var updated = existingBill {
+            // Editing (room still .open): keep id, createdAt, and the
+            // stored photo; replace everything the form controls.
+            updated.merchantName = merchant.trimmingCharacters(in: .whitespaces)
+            updated.taxRate = .percent(taxPercent)
+            updated.serviceChargeRate = .percent(servicePercent)
+            updated.taxBasis = taxBasis
+            updated.items = billItems
+            store.updateBill(updated, roomID: roomID)
+        } else {
+            var photoReference: String?
+            if let photo { photoReference = ReceiptPhotoStore.save(photo) }
+            let bill = Bill(
+                merchantName: merchant.trimmingCharacters(in: .whitespaces),
+                photoReference: photoReference,
+                taxRate: .percent(taxPercent),
+                serviceChargeRate: .percent(servicePercent),
+                taxBasis: taxBasis,
+                items: billItems
+            )
+            store.addBill(bill, roomID: roomID)
+        }
         dismiss()
+    }
+
+    /// Collapses per-unit items back into qty rows for editing. Safe only
+    /// while the room is `.open` — no claims exist yet, so identical units
+    /// are interchangeable.
+    private static func drafts(from bill: Bill) -> [DraftItem] {
+        var drafts: [DraftItem] = []
+        for item in bill.items {
+            if let index = drafts.firstIndex(where: {
+                $0.name == item.name && $0.price == item.unitPrice
+            }) {
+                drafts[index].qty += 1
+            } else {
+                var draft = DraftItem()
+                draft.name = item.name
+                draft.price = item.unitPrice
+                drafts.append(draft)
+            }
+        }
+        return drafts.isEmpty ? [DraftItem()] : drafts
     }
 }
 

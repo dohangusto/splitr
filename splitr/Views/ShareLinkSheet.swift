@@ -23,15 +23,16 @@ struct ShareLinkSheet: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
-                ShareLink(item: url) {
-                    Label("Send Invite Link", systemImage: "square.and.arrow.up")
-                }
-                .buttonStyle(.borderedProminent)
             }
             .padding()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    ShareLink(item: url) {
+                        Label("Send Invite Link", systemImage: "square.and.arrow.up")
+                    }
                 }
             }
         }

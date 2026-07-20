@@ -40,8 +40,10 @@ enum StoreCopy {
             return "The host can't be removed."
         case RoomError.billAlreadyAdded:
             return "That bill was already added."
+        case RoomError.billNotFound:
+            return "That bill is no longer in this room."
         case RoomError.billEditingNotAllowed:
-            return "Bills can't be changed after claiming closes."
+            return "Bills can only be edited before claiming starts."
         case RoomError.paymentUpdateNotAllowed:
             return "Payments can only be updated while settling."
         case RoomError.hostHasNoPayment:

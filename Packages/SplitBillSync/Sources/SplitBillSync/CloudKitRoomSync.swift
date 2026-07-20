@@ -412,8 +412,15 @@ public actor CloudKitRoomSync: RoomSyncService {
 }
 
 /// Persists CloudKit change tokens across launches (UserDefaults-backed).
+/// Change tokens are deliberately in-memory only: a token must never
+/// outlive the record cache it describes. Persisting tokens (UserDefaults)
+/// while `recordsByZone` resets every launch made CloudKit answer
+/// "nothing changed" against an empty cache — zero rooms on every cold
+/// start until some other action repopulated state. A fresh full fetch
+/// per launch is cheap at this data size; tokens still make every
+/// subsequent fetch within the session incremental.
 final class ChangeTokenStore: @unchecked Sendable {
-    private let defaults = UserDefaults.standard
+    private var storage: [String: CKServerChangeToken] = [:]
     private let queue = DispatchQueue(label: "splitr.tokens")
 
     func databaseToken(for scope: CKDatabase.Scope) -> CKServerChangeToken? {
@@ -433,20 +440,10 @@ final class ChangeTokenStore: @unchecked Sendable {
     }
 
     private func token(key: String) -> CKServerChangeToken? {
-        queue.sync {
-            guard let data = defaults.data(forKey: key) else { return nil }
-            return try? NSKeyedUnarchiver.unarchivedObject(ofClass: CKServerChangeToken.self, from: data)
-        }
+        queue.sync { storage[key] }
     }
 
     private func set(_ token: CKServerChangeToken?, key: String) {
-        queue.sync {
-            guard let token,
-                  let data = try? NSKeyedArchiver.archivedData(withRootObject: token, requiringSecureCoding: true) else {
-                defaults.removeObject(forKey: key)
-                return
-            }
-            defaults.set(data, forKey: key)
-        }
+        queue.sync { storage[key] = token }
     }
 }

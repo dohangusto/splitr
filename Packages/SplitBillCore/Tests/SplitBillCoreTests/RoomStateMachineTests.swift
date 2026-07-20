@@ -172,6 +172,66 @@ struct RoomStateMachineTests {
         }
     }
 
+    @Test("Bills: host updates while open or claiming, removes only while open")
+    func updateAndRemoveBillRules() throws {
+        var room = try Fixtures.openRoom(host: host, members: [alice])
+        let bill = Bill(merchantName: "Warung", items: [BillItem(name: "Nasi", unitPrice: 20_000)])
+        try room.addBill(bill, by: host.id)
+
+        // Non-host can't edit or remove.
+        #expect(throws: RoomError.notHost(alice.id)) {
+            var copy = room
+            try copy.updateBill(bill, by: alice.id)
+        }
+        #expect(throws: RoomError.notHost(alice.id)) {
+            var copy = room
+            try copy.removeBill(withID: bill.id, by: alice.id)
+        }
+
+        // Unknown bill surfaces billNotFound.
+        let ghost = Bill(merchantName: "Ghost")
+        #expect(throws: RoomError.billNotFound(ghost.id)) {
+            var copy = room
+            try copy.updateBill(ghost, by: host.id)
+        }
+        #expect(throws: RoomError.billNotFound(ghost.id)) {
+            var copy = room
+            try copy.removeBill(withID: ghost.id, by: host.id)
+        }
+
+        // Update replaces the bill wholesale while open.
+        var edited = bill
+        edited.merchantName = "Warung Bu Sri"
+        edited.items = [BillItem(name: "Nasi Goreng", unitPrice: 25_000)]
+        try room.updateBill(edited, by: host.id)
+        #expect(room.bill(withID: bill.id)?.merchantName == "Warung Bu Sri")
+        #expect(room.bill(withID: bill.id)?.subtotal == 25_000)
+
+        // During claiming the host can still fix a bill (wrong price spotted
+        // mid-claim) — but not remove one out from under claimers.
+        try room.advance(by: host.id)
+        edited.merchantName = "Warung Bu Sri Rev"
+        try room.updateBill(edited, by: host.id)
+        #expect(room.bill(withID: bill.id)?.merchantName == "Warung Bu Sri Rev")
+        #expect(throws: RoomError.billEditingNotAllowed(.claiming)) {
+            var copy = room
+            try copy.removeBill(withID: bill.id, by: host.id)
+        }
+
+        // From settling on, bills are frozen entirely.
+        try room.advance(by: host.id)
+        #expect(throws: RoomError.billEditingNotAllowed(.settling)) {
+            var copy = room
+            try copy.updateBill(edited, by: host.id)
+        }
+
+        // Removal works while open.
+        var openRoom = try Fixtures.openRoom(host: host)
+        try openRoom.addBill(bill, by: host.id)
+        try openRoom.removeBill(withID: bill.id, by: host.id)
+        #expect(openRoom.bills.isEmpty)
+    }
+
     @Test("Payment tracking runs during settling only, host confirms")
     func paymentFlow() throws {
         var room = try Fixtures.openRoom(host: host, members: [alice])

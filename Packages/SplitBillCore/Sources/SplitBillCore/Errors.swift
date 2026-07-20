@@ -12,6 +12,7 @@ public enum RoomError: Error, Equatable, Sendable {
     case memberNotFound(UUID)
     case cannotKickHost
     case billAlreadyAdded(UUID)
+    case billNotFound(UUID)
     case billEditingNotAllowed(RoomState)
     case paymentUpdateNotAllowed(RoomState)
     /// The host fronted the bill; they have no payment of their own to track.

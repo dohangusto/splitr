@@ -10,6 +10,8 @@ import SplitBillCore
 final class MockRoomStore: RoomStoring {
     private(set) var rooms: [Room]
     var alert: StoreAlert?
+    /// In-memory data is available immediately.
+    let isLoadingRooms = false
 
     /// Per-room "acting as" member for the debug perspective switcher.
     private var actingByRoom: [UUID: UUID] = [:]
@@ -71,6 +73,18 @@ final class MockRoomStore: RoomStoring {
     func addBill(_ bill: Bill, roomID: UUID) {
         mutate(roomID) { room, actor in
             try room.addBill(bill, by: actor)
+        }
+    }
+
+    func updateBill(_ bill: Bill, roomID: UUID) {
+        mutate(roomID) { room, actor in
+            try room.updateBill(bill, by: actor)
+        }
+    }
+
+    func removeBill(billID: UUID, roomID: UUID) {
+        mutate(roomID) { room, actor in
+            try room.removeBill(withID: billID, by: actor)
         }
     }
 
