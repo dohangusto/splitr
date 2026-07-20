@@ -126,7 +126,7 @@ struct RoomListView: View {
             .toolbarTitleDisplayMode(.inlineLarge)
             .toolbar { roomsToolbar }
             .navigationDestination(for: UUID.self) { roomID in
-                RoomDetailView(store: store, roomID: roomID)
+                RoomRootView(store: store, roomID: roomID)
             }
             .navigationDestination(isPresented: $showProfile) {
                 ProfileView(profile: $profile)
@@ -200,7 +200,7 @@ struct RoomListView: View {
             .navigationTitle("History")
             .toolbarTitleDisplayMode(.inlineLarge)
             .navigationDestination(for: UUID.self) { roomID in
-                RoomDetailView(store: store, roomID: roomID)
+                RoomRootView(store: store, roomID: roomID)
             }
         }
     }

@@ -7,7 +7,9 @@ import SwiftUI
 
 struct BillsPhotoCard: View {
 
-    let photos: [String]
+    /// Receipt photos loaded from `ReceiptPhotoStore` (file-backed, not
+    /// asset-catalog names).
+    let photos: [UIImage]
     var onAddTapped: () -> Void = {}
 
     var body: some View {
@@ -28,8 +30,8 @@ struct BillsPhotoCard: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 14) {
 
-                        ForEach(photos, id: \.self) { photo in
-                            Image(photo)
+                        ForEach(Array(photos.enumerated()), id: \.offset) { _, photo in
+                            Image(uiImage: photo)
                                 .resizable()
                                 .scaledToFill()
                                 .frame(width: 90, height: 90)
@@ -80,12 +82,7 @@ struct BillsPhotoCard: View {
             .ignoresSafeArea()
 
         BillsPhotoCard(
-            photos: [
-                "receipt1",
-                "receipt2",
-                "receipt1",
-                "receipt2"
-            ]
+            photos: ["receipt1", "receipt2"].compactMap { UIImage(named: $0) }
         ) {
             print("Tambah foto")
         }

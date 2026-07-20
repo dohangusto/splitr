@@ -22,16 +22,28 @@ struct PeopleCard: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {
 
-                        ForEach(people, id: \.self) { person in
-                            Image(person)
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: 54, height: 54)
-                                .clipShape(Circle())
-                                .overlay(
-                                    Circle()
-                                        .stroke(Color(.systemGray5), lineWidth: 2)
-                                )
+                        // Members are identified by an emoji avatar (an
+                        // asset name may also appear) — render whichever
+                        // the string resolves to.
+                        ForEach(Array(people.enumerated()), id: \.offset) { _, person in
+                            Group {
+                                if let uiImage = UIImage(named: person) {
+                                    Image(uiImage: uiImage)
+                                        .resizable()
+                                        .scaledToFill()
+                                } else {
+                                    Text(person)
+                                        .font(.system(size: 28))
+                                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                        .background(Color(.systemGray6))
+                                }
+                            }
+                            .frame(width: 54, height: 54)
+                            .clipShape(Circle())
+                            .overlay(
+                                Circle()
+                                    .stroke(Color(.systemGray5), lineWidth: 2)
+                            )
                         }
                     }
                 }

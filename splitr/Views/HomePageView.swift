@@ -96,7 +96,7 @@ struct HomePageView: View {
             }
             .navigationBarHidden(true)
             .navigationDestination(for: UUID.self) { roomID in
-                RoomDetailView(store: store, roomID: roomID)
+                RoomRootView(store: store, roomID: roomID)
             }
             .navigationDestination(isPresented: $showProfile) {
                 ProfileView(profile: $profile)
@@ -147,7 +147,7 @@ struct HomePageView: View {
             }
             .navigationBarHidden(true)
             .navigationDestination(for: UUID.self) { roomID in
-                RoomDetailView(store: store, roomID: roomID)
+                RoomRootView(store: store, roomID: roomID)
             }
         }
     }
@@ -217,7 +217,7 @@ struct HomePageView: View {
             .navigationBarHidden(true)
             .searchable(text: $searchText, prompt: "Room name")
             .navigationDestination(for: UUID.self) { roomID in
-                RoomDetailView(store: store, roomID: roomID)
+                RoomRootView(store: store, roomID: roomID)
             }
         }
     }
