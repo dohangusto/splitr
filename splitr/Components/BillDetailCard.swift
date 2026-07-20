@@ -7,104 +7,216 @@
 
 import SwiftUI
 
+struct BillDetailItem: Identifiable, Equatable {
+    let id = UUID()
+    var name: String
+    var quantity: Int
+    var price: String
+}
+
 struct BillDetailCard: View {
+
+    @State private var isEditing = false
+
+    @State private var billTitle = "Alfamart bill"
+
+    @State private var items: [BillDetailItem] = [
+        BillDetailItem(
+            name: "Cimory hazelnut",
+            quantity: 1,
+            price: "9,000"
+        ),
+        BillDetailItem(
+            name: "Cimory hazelnut",
+            quantity: 1,
+            price: "9,000"
+        ),
+        BillDetailItem(
+            name: "Cimory hazelnut",
+            quantity: 1,
+            price: "9,000"
+        )
+    ]
+
+    @State private var tax = "8,000"
+    @State private var service = "0"
+    @State private var discount = "0"
+    @State private var subtotal = "34,000"
+
+    private var isFormValid: Bool {
+        !items.isEmpty && items.allSatisfy { item in
+            !item.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+            !item.price.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+            (Int(item.price.filter { "0"..."9" ~= $0 }) ?? 0) > 0 &&
+            item.quantity > 0
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
 
-            // MARK: Bill Title
-            Text("Alfamart bill")
-                .font(.title3)
-                .foregroundStyle(.secondary)
-                .padding(.bottom, 20)
+            // MARK: - Bill Title
 
-            // MARK: Bill Items
+            if isEditing {
+                TextField("Bill name", text: $billTitle)
+                    .font(.title3)
+                    .foregroundStyle(.primary)
+                    .padding(.bottom, 20)
+            } else {
+                Text(billTitle)
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+                    .padding(.bottom, 20)
+            }
+
+
+            // MARK: - Bill Items
+
             VStack(spacing: 0) {
 
-                BillItemRow(
-                    name: "Cimory hazelnut",
-                    quantity: 1,
-                    price: "9,000"
-                )
+                ForEach($items) { $item in
+
+                    if isEditing {
+
+                        EditableBillItemRow(
+                            name: $item.name,
+                            quantity: $item.quantity,
+                            price: $item.price,
+                            onDelete: {
+                                withAnimation {
+                                    items.removeAll { $0.id == item.id }
+                                }
+                            }
+                        )
+
+                    } else {
+
+                        BillItemRow(
+                            name: item.name,
+                            quantity: item.quantity,
+                            price: item.price
+                        )
+                    }
+
+                    if item.id != items.last?.id {
+                        Divider()
+                            .padding(.vertical, 16)
+                    }
+                }
+            }
+
+
+            // MARK: - Add Item
+
+            if isEditing {
+
+                Button {
+                    addItem()
+                } label: {
+                    HStack(spacing: 8) {
+
+                        Image(systemName: "plus")
+
+                        Text("Add item")
+                    }
+                    .font(.headline)
+                    .foregroundStyle(.blue)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 50)
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 16)
 
                 Divider()
-                    .padding(.vertical, 16)
-
-                BillItemRow(
-                    name: "Cimory hazelnut",
-                    quantity: 1,
-                    price: "9,000"
-                )
-
-                Divider()
-                    .padding(.vertical, 16)
-
-                BillItemRow(
-                    name: "Cimory hazelnut",
-                    quantity: 1,
-                    price: "9,000"
-                )
+                    .padding(.vertical, 20)
+            } else {
 
                 Divider()
                     .padding(.vertical, 16)
             }
 
-            // MARK: Bill Summary
+
+            // MARK: - Bill Summary
+
             VStack(spacing: 24) {
 
-                BillSummaryRow(
+                EditableSummaryRow(
                     title: "Pajak",
-                    value: "8,000"
+                    value: $tax,
+                    isEditing: isEditing
                 )
 
-                BillSummaryRow(
+                EditableSummaryRow(
                     title: "Servis",
-                    value: "0"
+                    value: $service,
+                    isEditing: isEditing
                 )
 
-                BillSummaryRow(
+                EditableSummaryRow(
                     title: "Diskon",
-                    value: "0"
+                    value: $discount,
+                    isEditing: isEditing
                 )
 
-                BillSummaryRow(
+                EditableSummaryRow(
                     title: "Subtotal",
-                    value: "34,000"
+                    value: $subtotal,
+                    isEditing: isEditing
                 )
             }
 
-            // MARK: Edit Button
+
+            // MARK: - Edit / Done Button
+
             Button {
 
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isEditing.toggle()
+                }
+
             } label: {
+
                 HStack(spacing: 12) {
 
-                    Image(systemName: "pencil")
-                        .font(.system(size: 20))
+                    Image(
+                        systemName:
+                            isEditing
+                            ? "checkmark"
+                            : "pencil"
+                    )
+                    .font(.system(size: 20))
 
-                    Text("Edit details")
-                        .font(.headline)
-                        .foregroundStyle(.primary)
+                    Text(
+                        isEditing
+                        ? "Done"
+                        : "Edit details"
+                    )
+                    .font(.headline)
+                    .foregroundStyle(isEditing && !isFormValid ? .secondary : .primary)
                 }
                 .frame(maxWidth: .infinity)
                 .frame(height: 56)
-                .background(Color.white)
+                .background(isEditing && !isFormValid ? Color(.systemGray6) : Color.white)
                 .overlay {
                     RoundedRectangle(
                         cornerRadius: 28,
                         style: .continuous
                     )
                     .stroke(
-                        Color(.systemGray5),
+                        isEditing && !isFormValid ? Color.clear : Color(.systemGray5),
                         lineWidth: 1
                     )
                 }
             }
             .buttonStyle(.plain)
             .padding(.top, 24)
+            .disabled(isEditing && !isFormValid)
         }
         .padding(24)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(
+            maxWidth: .infinity,
+            alignment: .leading
+        )
         .background(Color.white)
         .clipShape(
             RoundedRectangle(
@@ -112,6 +224,54 @@ struct BillDetailCard: View {
                 style: .continuous
             )
         )
+        .onAppear {
+            recalculateSummary()
+        }
+        .onChange(of: items) { _, _ in
+            recalculateSummary()
+        }
+        .onChange(of: service) { _, _ in
+            recalculateSummary()
+        }
+    }
+
+
+    // MARK: - Add Item
+
+    private func addItem() {
+
+        let newItem = BillDetailItem(
+            name: "",
+            quantity: 1,
+            price: ""
+        )
+
+        withAnimation {
+            items.append(newItem)
+        }
+    }
+
+    private func parsePrice(_ priceString: String) -> Int {
+        let cleaned = priceString.filter { "0"..."9" ~= $0 }
+        return Int(cleaned) ?? 0
+    }
+
+    private func formatRupiah(_ value: Int) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.groupingSeparator = ","
+        return formatter.string(from: NSNumber(value: value)) ?? "\(value)"
+    }
+
+    private func recalculateSummary() {
+        let subtotalInt = items.reduce(0) { total, item in
+            total + (item.quantity * parsePrice(item.price))
+        }
+        let serviceInt = parsePrice(service)
+        let taxInt = (subtotalInt + serviceInt) * 10 / 100
+
+        subtotal = formatRupiah(subtotalInt)
+        tax = formatRupiah(taxInt)
     }
 }
 
@@ -125,6 +285,7 @@ private struct BillItemRow: View {
     let price: String
 
     var body: some View {
+
         HStack {
 
             Text(name)
@@ -147,14 +308,88 @@ private struct BillItemRow: View {
 }
 
 
-// MARK: - Bill Summary Row
+// MARK: - Editable Bill Item Row
 
-private struct BillSummaryRow: View {
+private struct EditableBillItemRow: View {
 
-    let title: String
-    let value: String
+    @Binding var name: String
+    @Binding var quantity: Int
+    @Binding var price: String
+    let onDelete: () -> Void
 
     var body: some View {
+
+        HStack(spacing: 12) {
+
+            Button(role: .destructive) {
+                onDelete()
+            } label: {
+                Image(systemName: "minus.circle.fill")
+                    .foregroundStyle(.red)
+                    .font(.title3)
+            }
+            .buttonStyle(.plain)
+
+            // Item Name
+
+            TextField(
+                "Item name",
+                text: $name
+            )
+            .font(.headline)
+
+
+            Spacer()
+
+
+            // Quantity
+
+            HStack(spacing: 2) {
+
+                Text("x")
+                    .foregroundStyle(.secondary)
+
+                TextField(
+                    "1",
+                    value: $quantity,
+                    format: .number
+                )
+                .keyboardType(.numberPad)
+                .multilineTextAlignment(.center)
+                .frame(width: 30)
+            }
+
+
+            Spacer()
+
+
+            // Price
+
+            TextField(
+                "Price",
+                text: $price
+            )
+            .font(.headline)
+            .keyboardType(.numberPad)
+            .multilineTextAlignment(.trailing)
+            .frame(width: 80)
+        }
+    }
+}
+
+
+// MARK: - Bill Summary Row
+
+private struct EditableSummaryRow: View {
+
+    let title: String
+
+    @Binding var value: String
+
+    let isEditing: Bool
+
+    var body: some View {
+
         HStack {
 
             Text(title)
@@ -163,9 +398,23 @@ private struct BillSummaryRow: View {
 
             Spacer()
 
-            Text(value)
+            if isEditing {
+
+                TextField(
+                    "0",
+                    text: $value
+                )
                 .font(.headline)
-                .foregroundStyle(.primary)
+                .keyboardType(.numberPad)
+                .multilineTextAlignment(.trailing)
+                .frame(width: 100)
+
+            } else {
+
+                Text(value)
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+            }
         }
     }
 }
@@ -174,11 +423,18 @@ private struct BillSummaryRow: View {
 // MARK: - Preview
 
 #Preview {
+
     ZStack {
-        Color(red: 237/255, green: 242/255, blue: 255/255)
-            .ignoresSafeArea()
+
+        Color(
+            red: 237/255,
+            green: 242/255,
+            blue: 255/255
+        )
+        .ignoresSafeArea()
 
         ScrollView {
+
             BillDetailCard()
                 .padding(20)
         }
