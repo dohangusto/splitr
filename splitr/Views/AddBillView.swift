@@ -66,15 +66,16 @@ struct AddBillForm: View {
 
     private var billForm: some View {
         Form {
-            if scan != nil {
+            // The real "OCR is never trusted blindly" gate: a single quiet
+            // line reconciling the parsed items against the receipt's own
+            // printed subtotal. Match → trust at a glance. Mismatch → hunt
+            // the difference. No per-row confidence flags — a "low
+            // confidence" mark doesn't change what the host does (they
+            // reconcile either way), and OCR is confidently wrong as often
+            // as it's hesitantly right.
+            if let printed = scan?.printedSubtotal {
                 Section {
-                    Label {
-                        Text("Check items against the receipt before saving.")
-                            .font(.subheadline)
-                    } icon: {
-                        Image(systemName: "doc.viewfinder")
-                    }
-                    .foregroundStyle(.orange)
+                    reconciliationLine(printed: printed, summed: subtotal)
                 }
             }
 
@@ -109,20 +110,6 @@ struct AddBillForm: View {
                 Picker("Tax applies to", selection: $taxBasis) {
                     Text("Subtotal + service").tag(TaxBasis.subtotalPlusService)
                     Text("Subtotal only").tag(TaxBasis.subtotal)
-                }
-            }
-
-            if let scan, !scan.unparsedLines.isEmpty {
-                Section {
-                    ForEach(scan.unparsedLines, id: \.self) { line in
-                        Text(line)
-                            .font(.callout.monospaced())
-                            .foregroundStyle(.secondary)
-                    }
-                } header: {
-                    Text("Couldn't read these lines")
-                } footer: {
-                    Text("Add them as items above if they belong on the bill.")
                 }
             }
 
@@ -165,6 +152,31 @@ struct AddBillForm: View {
                 if !scan.items.isEmpty {
                     items = scan.items
                 }
+            }
+        }
+    }
+
+    /// One quiet line: parsed items vs. the receipt's printed subtotal,
+    /// reflecting the host's live edits so it closes as they fix a row.
+    @ViewBuilder
+    private func reconciliationLine(printed: Int, summed: Int) -> some View {
+        let diff = printed - summed
+        if diff == 0 {
+            Label {
+                Text("Items match the receipt subtotal (\(printed.rupiah)).")
+                    .font(.subheadline)
+            } icon: {
+                Image(systemName: "checkmark.circle")
+            }
+            .foregroundStyle(.secondary)
+        } else {
+            Label {
+                Text(diff > 0
+                    ? "Items are \(abs(diff).rupiah) under the receipt subtotal (\(printed.rupiah)) — check for a missing item."
+                    : "Items are \(abs(diff).rupiah) over the receipt subtotal (\(printed.rupiah)) — check for a double-counted item.")
+                    .font(.subheadline)
+            } icon: {
+                Image(systemName: "exclamationmark.circle")
             }
         }
     }
@@ -228,26 +240,19 @@ struct AddBillForm: View {
 private struct DraftItemRow: View {
     @Binding var item: DraftItem
 
+    // One line, name + price both editable inline — no confidence badge, no
+    // "needs review" second line. (`needsReview`/`confidence` are still
+    // captured in the draft; they're simply not shown.) The qty stepper
+    // stays for manual entry, where "3× Es Teh" is a real case.
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                TextField("Item name", text: $item.name)
-                if item.needsReview {
-                    Label("Check this row", systemImage: "exclamationmark.triangle.fill")
-                        .labelStyle(.iconOnly)
-                        .foregroundStyle(.orange)
-                        .accessibilityLabel("Low-confidence scan — check this row")
-                }
-            }
-            HStack {
-                TextField("Unit price (Rp)", value: $item.price, format: .number)
-                    .keyboardType(.numberPad)
-                Stepper("×\(item.qty)", value: $item.qty, in: 1...20)
-                    .fixedSize()
-            }
-            .font(.subheadline)
+        HStack(spacing: 8) {
+            TextField("Item name", text: $item.name)
+            Stepper("×\(item.qty)", value: $item.qty, in: 1...20)
+                .fixedSize()
+            TextField("Price", value: $item.price, format: .number)
+                .keyboardType(.numberPad)
+                .multilineTextAlignment(.trailing)
+                .frame(width: 76)
         }
-        .onChange(of: item.name) { item.needsReview = false }
-        .onChange(of: item.price) { item.needsReview = false }
     }
 }

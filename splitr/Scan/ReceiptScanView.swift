@@ -12,15 +12,41 @@ import SwiftUI
 struct ReceiptScanFlow: View {
     let store: any RoomStoring
     let roomID: UUID
-    var recognizer: any ReceiptRecognizing = VisionReceiptRecognizer()
+    let recognizer: any ReceiptRecognizing
+    /// Where the flow starts: the custom camera, or straight into the system
+    /// photo picker. Both feed the identical `ReceiptScanPipeline` — the
+    /// picked image is perspective-corrected and orientation-normalized the
+    /// same way a camera shot is; neither skips pre-OCR normalization.
+    let source: Source
+
+    init(
+        store: any RoomStoring,
+        roomID: UUID,
+        recognizer: any ReceiptRecognizing = VisionReceiptRecognizer(),
+        source: Source = .camera
+    ) {
+        self.store = store
+        self.roomID = roomID
+        self.recognizer = recognizer
+        self.source = source
+        _phase = State(initialValue: source == .camera ? .capture : .picking)
+    }
 
     @Environment(\.dismiss) private var dismiss
-    @State private var phase: Phase = .capture
+    @State private var phase: Phase
     @State private var showPhotoPicker = false
     @State private var photoSelection: PhotosPickerItem?
 
+    enum Source {
+        case camera
+        case photoLibrary
+    }
+
     enum Phase {
         case capture
+        /// Photo-library start: present the system picker without ever
+        /// mounting the camera (so the camera-permission prompt never fires).
+        case picking
         case processing
         case review(ParsedReceipt, photo: UIImage?)
         case failed(String)
@@ -42,6 +68,24 @@ struct ReceiptScanFlow: View {
                         showPhotoPicker = true
                     } onCancel: {
                         dismiss()
+                    }
+                case .picking:
+                    // Neutral placeholder behind the picker — no camera. If
+                    // the host cancels the picker, this is where they land.
+                    ContentUnavailableView {
+                        Label("Choose a receipt photo", systemImage: "photo.on.rectangle")
+                    } description: {
+                        Text("Pick a photo of the receipt to scan.")
+                    } actions: {
+                        Button("Choose Photo") { showPhotoPicker = true }
+                            .buttonStyle(.borderedProminent)
+                    }
+                    .navigationTitle("Select Photo")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Cancel") { dismiss() }
+                        }
                     }
                 case .processing:
                     ProgressView("Reading receipt…")
@@ -73,6 +117,10 @@ struct ReceiptScanFlow: View {
             }
         }
         .photosPicker(isPresented: $showPhotoPicker, selection: $photoSelection, matching: .images)
+        .task {
+            // Photo-library start: open the picker immediately.
+            if case .picking = phase { showPhotoPicker = true }
+        }
         .onChange(of: photoSelection) { _, item in
             guard let item else { return }
             photoSelection = nil

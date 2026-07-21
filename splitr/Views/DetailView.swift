@@ -15,9 +15,13 @@ struct DetailView: View {
     let roomID: UUID
 
     @State private var showingPeopleList = false
-    @State private var showScanReceipt = false
-    @State private var showAddBill = false
+    @State private var showAddBillOptions = false
+    /// Chosen from the add-bill options sheet, applied on its dismissal so
+    /// the follow-on flow presents cleanly after the sheet closes.
+    @State private var pendingBillEntry: BillEntry?
+    @State private var billEntry: BillEntry?
     @State private var billToEdit: Bill?
+    @State private var previewPhoto: PreviewPhoto?
     @State private var showAdvanceConfirm = false
     @State private var showRollbackConfirm = false
     @State private var memberToKick: Member?
@@ -64,17 +68,23 @@ struct DetailView: View {
                         showingPeopleList = true
                     }
 
-                    // Bills Photo
-                    BillsPhotoCard(
-                        photos: room.bills.compactMap { ReceiptPhotoStore.load($0.photoReference) }
-                    ) {
-                        if canEditBills(room) { showScanReceipt = true }
+                    // Bills Photo — the "+" is the host's add-a-bill entry
+                    // point, and it exists only while the room is `.open`:
+                    // once claiming starts the bill set is fixed. Thumbnails
+                    // stay tappable to preview in any state. Hidden entirely
+                    // when there's nothing to show and nothing to add.
+                    let photos = room.bills.compactMap { ReceiptPhotoStore.load($0.photoReference) }
+                    let canAddBill = room.state == .open
+                    if !photos.isEmpty || canAddBill {
+                        BillsPhotoCard(
+                            photos: photos,
+                            showsAddButton: canAddBill,
+                            onAddTapped: { showAddBillOptions = true },
+                            onPhotoTapped: { previewPhoto = PreviewPhoto(image: $0) }
+                        )
                     }
 
                     // Bill Detail — one card per bill, straight from Core.
-                    if room.bills.isEmpty, room.state == .open {
-                        emptyBillsCard
-                    }
                     ForEach(room.bills) { bill in
                         BillDetailCard(
                             bill: bill,
@@ -97,11 +107,34 @@ struct DetailView: View {
         .sheet(isPresented: $showingPeopleList) {
             PeopleListSheet(store: store, roomID: roomID)
         }
-        .sheet(isPresented: $showScanReceipt) {
-            ReceiptScanFlow(store: store, roomID: roomID)
+        .sheet(item: $previewPhoto) { preview in
+            ReceiptPhotoPreview(image: preview.image)
         }
-        .sheet(isPresented: $showAddBill) {
-            AddBillView(store: store, roomID: roomID)
+        // Three weighty, icon-bearing choices deserve a real detented sheet,
+        // not an action-sheet. The chosen entry is applied on dismissal so
+        // the follow-on flow presents cleanly after this sheet closes.
+        .sheet(isPresented: $showAddBillOptions, onDismiss: {
+            if let pendingBillEntry {
+                billEntry = pendingBillEntry
+                self.pendingBillEntry = nil
+            }
+        }) {
+            AddBillOptionsSheet { entry in
+                pendingBillEntry = entry
+                showAddBillOptions = false
+            }
+            .presentationDetents([.height(320)])
+            .presentationDragIndicator(.visible)
+        }
+        .sheet(item: $billEntry) { entry in
+            switch entry {
+            case .camera:
+                ReceiptScanFlow(store: store, roomID: roomID, source: .camera)
+            case .photo:
+                ReceiptScanFlow(store: store, roomID: roomID, source: .photoLibrary)
+            case .manual:
+                AddBillView(store: store, roomID: roomID)
+            }
         }
         .sheet(item: $billToEdit) { bill in
             NavigationStack {
@@ -209,37 +242,6 @@ struct DetailView: View {
 
     // MARK: - State-dependent pieces
 
-    private func canEditBills(_ room: Room) -> Bool {
-        room.state == .open || room.state == .claiming
-    }
-
-    /// First-time host path lives in content, where they look.
-    private var emptyBillsCard: some View {
-        VStack(spacing: 16) {
-            Text("No bills yet")
-                .font(.headline)
-                .foregroundStyle(.secondary)
-            HStack(spacing: 12) {
-                Button {
-                    showScanReceipt = true
-                } label: {
-                    Label("Scan Receipt", systemImage: "doc.viewfinder")
-                }
-                Button {
-                    showAddBill = true
-                } label: {
-                    Label("Enter Manually", systemImage: "keyboard")
-                }
-            }
-            .font(.subheadline.weight(.medium))
-            .buttonStyle(.bordered)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(24)
-        .background(Color.white)
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-    }
-
     /// The existing working screens stay as sub-destinations: claiming
     /// oversight (incl. force-assign) and settlement (incl. payment
     /// confirmation) are not re-implemented here.
@@ -333,6 +335,128 @@ struct DetailView: View {
                 .allSatisfy { $0.paymentStatus == .hostConfirmed }
         case .closed:
             return true
+        }
+    }
+}
+
+/// The three ways a host starts a new bill. Identifiable so `.sheet(item:)`
+/// can drive the follow-on flow.
+private enum BillEntry: Identifiable {
+    case camera
+    case photo
+    case manual
+    var id: Self { self }
+}
+
+/// The add-a-bill chooser: a detented bottom sheet of three icon-bearing
+/// options. Camera and Photo both feed the same OCR pipeline; Manual opens
+/// a blank bill form. All three still pass through the edit screen before a
+/// `Bill` is ever created.
+private struct AddBillOptionsSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let onSelect: (BillEntry) -> Void
+
+    var body: some View {
+        NavigationStack {
+            List {
+                row(.camera, title: "Open Camera",
+                    subtitle: "Scan the receipt with the camera",
+                    systemImage: "camera.fill")
+                row(.photo, title: "Select from Photo",
+                    subtitle: "Pick a receipt photo from your library",
+                    systemImage: "photo.on.rectangle")
+                row(.manual, title: "Enter Manually",
+                    subtitle: "Type the items in yourself",
+                    systemImage: "keyboard")
+            }
+            .navigationTitle("Add a bill")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+        }
+    }
+
+    private func row(
+        _ entry: BillEntry,
+        title: String,
+        subtitle: String,
+        systemImage: String
+    ) -> some View {
+        Button {
+            onSelect(entry)
+        } label: {
+            Label {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                    Text(subtitle)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            } icon: {
+                Image(systemName: systemImage)
+                    .font(.title3)
+                    .foregroundStyle(Color("SplitAirBlue"))
+                    .frame(width: 32)
+            }
+            .padding(.vertical, 4)
+        }
+    }
+}
+
+/// Wraps a tapped receipt photo so `.sheet(item:)` can present it (UIImage
+/// isn't Identifiable on its own).
+private struct PreviewPhoto: Identifiable {
+    let id = UUID()
+    let image: UIImage
+}
+
+/// Full-screen preview of a receipt photo, pinch-to-zoom and double-tap so
+/// small print stays readable (same gesture model as `ReceiptPhotoPane`).
+private struct ReceiptPhotoPreview: View {
+    let image: UIImage
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var zoom: CGFloat = 1
+    @State private var steadyZoom: CGFloat = 1
+
+    var body: some View {
+        NavigationStack {
+            GeometryReader { proxy in
+                ScrollView([.horizontal, .vertical], showsIndicators: false) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(
+                            width: proxy.size.width * zoom,
+                            height: proxy.size.height * zoom
+                        )
+                }
+                .defaultScrollAnchor(.center)
+            }
+            .background(Color(.systemBackground))
+            .gesture(
+                MagnifyGesture()
+                    .onChanged { zoom = min(max(steadyZoom * $0.magnification, 1), 6) }
+                    .onEnded { _ in steadyZoom = zoom }
+            )
+            .onTapGesture(count: 2) {
+                withAnimation(.snappy) {
+                    zoom = zoom > 1.01 ? 1 : 2.5
+                    steadyZoom = zoom
+                }
+            }
+            .navigationTitle("Receipt photo")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
         }
     }
 }

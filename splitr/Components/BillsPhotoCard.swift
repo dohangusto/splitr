@@ -10,7 +10,12 @@ struct BillsPhotoCard: View {
     /// Receipt photos loaded from `ReceiptPhotoStore` (file-backed, not
     /// asset-catalog names).
     let photos: [UIImage]
+    /// The "+" is only present while the bill set is still open for changes
+    /// (the room is `.open`). Once claiming starts, the receipts are fixed.
+    var showsAddButton: Bool = true
     var onAddTapped: () -> Void = {}
+    /// Tapping a thumbnail opens it for a closer look.
+    var onPhotoTapped: (UIImage) -> Void = { _ in }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -20,7 +25,7 @@ struct BillsPhotoCard: View {
                     .font(.headline)
                     .foregroundStyle(.primary)
 
-                Text("Add more or edit bills photo")
+                Text(showsAddButton ? "Add more or edit bills photo" : "Tap a photo to view it")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -31,40 +36,47 @@ struct BillsPhotoCard: View {
                     HStack(spacing: 14) {
 
                         ForEach(Array(photos.enumerated()), id: \.offset) { _, photo in
-                            Image(uiImage: photo)
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: 90, height: 90)
-                                .clipShape(
-                                    RoundedRectangle(cornerRadius: 18)
-                                )
+                            Button {
+                                onPhotoTapped(photo)
+                            } label: {
+                                Image(uiImage: photo)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 90, height: 90)
+                                    .clipShape(
+                                        RoundedRectangle(cornerRadius: 18)
+                                    )
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                 }
 
-                Button {
-                    onAddTapped()
-                } label: {
-                    RoundedRectangle(cornerRadius: 18)
-                        .fill(Color.white)
-                        .frame(width: 90, height: 90)
-                        .overlay {
+                if showsAddButton {
+                    Button {
+                        onAddTapped()
+                    } label: {
+                        RoundedRectangle(cornerRadius: 18)
+                            .fill(Color.white)
+                            .frame(width: 90, height: 90)
+                            .overlay {
 
-                            RoundedRectangle(cornerRadius: 18)
-                                .stroke(
-                                    Color(.systemGray5),
-                                    style: StrokeStyle(
-                                        lineWidth: 2,
-                                        dash: [8]
+                                RoundedRectangle(cornerRadius: 18)
+                                    .stroke(
+                                        Color(.systemGray5),
+                                        style: StrokeStyle(
+                                            lineWidth: 2,
+                                            dash: [8]
+                                        )
                                     )
-                                )
 
-                            Image(systemName: "plus")
-                                .font(.system(size: 30))
-                                .foregroundStyle(.gray)
-                        }
+                                Image(systemName: "plus")
+                                    .font(.system(size: 30))
+                                    .foregroundStyle(.gray)
+                            }
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
         }
         .padding(20)
