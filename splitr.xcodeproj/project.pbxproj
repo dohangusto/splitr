@@ -9,6 +9,10 @@
 /* Begin PBXBuildFile section */
 		34D845903005430000731F4F /* SplitBillCore in Frameworks */ = {isa = PBXBuildFile; productRef = 34D845913005430000731F4F /* SplitBillCore */; };
 		34D845963005430000731F4F /* SplitBillSync in Frameworks */ = {isa = PBXBuildFile; productRef = 34D845953005430000731F4F /* SplitBillSync */; };
+		34E50C80300FACC9000B30AF /* SplitrClip.app in Embed App Clips */ = {isa = PBXBuildFile; fileRef = 34E50C74300FACC8000B30AF /* SplitrClip.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		34E50C88300FBD66000B30AF /* SplitBillCore in Frameworks */ = {isa = PBXBuildFile; productRef = 34E50C87300FBD66000B30AF /* SplitBillCore */; };
+		34E50C8B300FCD2A000B30AF /* SplitBillRelay in Frameworks */ = {isa = PBXBuildFile; productRef = 34E50C8A300FCD2A000B30AF /* SplitBillRelay */; };
+		34E50C8D300FD157000B30AF /* SplitBillRelay in Frameworks */ = {isa = PBXBuildFile; productRef = 34E50C8C300FD157000B30AF /* SplitBillRelay */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -19,11 +23,33 @@
 			remoteGlobalIDString = 34D845583005421600731F4F;
 			remoteInfo = splitr;
 		};
+		34E50C7E300FACC9000B30AF /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 34D845513005421600731F4F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 34E50C73300FACC8000B30AF;
+			remoteInfo = SplitrClip;
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		34E50C81300FACC9000B30AF /* Embed App Clips */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/AppClips";
+			dstSubfolderSpec = 16;
+			files = (
+				34E50C80300FACC9000B30AF /* SplitrClip.app in Embed App Clips */,
+			);
+			name = "Embed App Clips";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		34D845593005421600731F4F /* splitr.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = splitr.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		34D845663005421700731F4F /* splitrTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = splitrTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		34E50C74300FACC8000B30AF /* SplitrClip.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SplitrClip.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -33,6 +59,13 @@
 				Info.plist,
 			);
 			target = 34D845583005421600731F4F /* splitr */;
+		};
+		34E50C85300FACC9000B30AF /* Exceptions for "SplitrClip" folder in "SplitrClip" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 34E50C73300FACC8000B30AF /* SplitrClip */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -50,6 +83,14 @@
 			path = splitrTests;
 			sourceTree = "<group>";
 		};
+		34E50C75300FACC8000B30AF /* SplitrClip */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				34E50C85300FACC9000B30AF /* Exceptions for "SplitrClip" folder in "SplitrClip" target */,
+			);
+			path = SplitrClip;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -57,6 +98,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				34E50C8D300FD157000B30AF /* SplitBillRelay in Frameworks */,
 				34D845903005430000731F4F /* SplitBillCore in Frameworks */,
 				34D845963005430000731F4F /* SplitBillSync in Frameworks */,
 			);
@@ -69,6 +111,15 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		34E50C71300FACC8000B30AF /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				34E50C8B300FCD2A000B30AF /* SplitBillRelay in Frameworks */,
+				34E50C88300FBD66000B30AF /* SplitBillCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -77,6 +128,8 @@
 			children = (
 				34D8455B3005421600731F4F /* splitr */,
 				34D845693005421700731F4F /* splitrTests */,
+				34E50C75300FACC8000B30AF /* SplitrClip */,
+				34E50C86300FBD66000B30AF /* Frameworks */,
 				34D8455A3005421600731F4F /* Products */,
 			);
 			sourceTree = "<group>";
@@ -86,8 +139,16 @@
 			children = (
 				34D845593005421600731F4F /* splitr.app */,
 				34D845663005421700731F4F /* splitrTests.xctest */,
+				34E50C74300FACC8000B30AF /* SplitrClip.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		34E50C86300FBD66000B30AF /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -100,10 +161,12 @@
 				34D845553005421600731F4F /* Sources */,
 				34D845563005421600731F4F /* Frameworks */,
 				34D845573005421600731F4F /* Resources */,
+				34E50C81300FACC9000B30AF /* Embed App Clips */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				34E50C7F300FACC9000B30AF /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				34D8455B3005421600731F4F /* splitr */,
@@ -112,6 +175,7 @@
 			packageProductDependencies = (
 				34D845913005430000731F4F /* SplitBillCore */,
 				34D845953005430000731F4F /* SplitBillSync */,
+				34E50C8C300FD157000B30AF /* SplitBillRelay */,
 			);
 			productName = splitr;
 			productReference = 34D845593005421600731F4F /* splitr.app */;
@@ -140,6 +204,30 @@
 			productReference = 34D845663005421700731F4F /* splitrTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		34E50C73300FACC8000B30AF /* SplitrClip */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 34E50C84300FACC9000B30AF /* Build configuration list for PBXNativeTarget "SplitrClip" */;
+			buildPhases = (
+				34E50C70300FACC8000B30AF /* Sources */,
+				34E50C71300FACC8000B30AF /* Frameworks */,
+				34E50C72300FACC8000B30AF /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				34E50C75300FACC8000B30AF /* SplitrClip */,
+			);
+			name = SplitrClip;
+			packageProductDependencies = (
+				34E50C87300FBD66000B30AF /* SplitBillCore */,
+				34E50C8A300FCD2A000B30AF /* SplitBillRelay */,
+			);
+			productName = SplitrClip;
+			productReference = 34E50C74300FACC8000B30AF /* SplitrClip.app */;
+			productType = "com.apple.product-type.application.on-demand-install-capable";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -157,6 +245,9 @@
 						CreatedOnToolsVersion = 26.4;
 						TestTargetID = 34D845583005421600731F4F;
 					};
+					34E50C73300FACC8000B30AF = {
+						CreatedOnToolsVersion = 26.4;
+					};
 				};
 			};
 			buildConfigurationList = 34D845543005421600731F4F /* Build configuration list for PBXProject "splitr" */;
@@ -171,6 +262,7 @@
 			packageReferences = (
 				34D845923005430000731F4F /* XCLocalSwiftPackageReference "Packages/SplitBillCore" */,
 				34D845943005430000731F4F /* XCLocalSwiftPackageReference "Packages/SplitBillSync" */,
+				34E50C89300FCCB5000B30AF /* XCLocalSwiftPackageReference "Packages/SplitBillRelay" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 34D8455A3005421600731F4F /* Products */;
@@ -179,6 +271,7 @@
 			targets = (
 				34D845583005421600731F4F /* splitr */,
 				34D845653005421700731F4F /* splitrTests */,
+				34E50C73300FACC8000B30AF /* SplitrClip */,
 			);
 		};
 /* End PBXProject section */
@@ -192,6 +285,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		34D845643005421700731F4F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		34E50C72300FACC8000B30AF /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -215,6 +315,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		34E50C70300FACC8000B30AF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -222,6 +329,11 @@
 			isa = PBXTargetDependency;
 			target = 34D845583005421600731F4F /* splitr */;
 			targetProxy = 34D845673005421700731F4F /* PBXContainerItemProxy */;
+		};
+		34E50C7F300FACC9000B30AF /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 34E50C73300FACC8000B30AF /* SplitrClip */;
+			targetProxy = 34E50C7E300FACC9000B30AF /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -477,6 +589,78 @@
 			};
 			name = Release;
 		};
+		34E50C82300FACC9000B30AF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = SplitrClip/SplitrClip.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 9PP7722MM6;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = SplitrClip/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = splitr;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.c4.splitr.Clip;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		34E50C83300FACC9000B30AF /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = SplitrClip/SplitrClip.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 9PP7722MM6;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = SplitrClip/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = splitr;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.c4.splitr.Clip;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -507,6 +691,15 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		34E50C84300FACC9000B30AF /* Build configuration list for PBXNativeTarget "SplitrClip" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				34E50C82300FACC9000B30AF /* Debug */,
+				34E50C83300FACC9000B30AF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
@@ -518,6 +711,10 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/SplitBillSync;
 		};
+		34E50C89300FCCB5000B30AF /* XCLocalSwiftPackageReference "Packages/SplitBillRelay" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/SplitBillRelay;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -528,6 +725,21 @@
 		34D845953005430000731F4F /* SplitBillSync */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = SplitBillSync;
+		};
+		34E50C87300FBD66000B30AF /* SplitBillCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 34D845923005430000731F4F /* XCLocalSwiftPackageReference "Packages/SplitBillCore" */;
+			productName = SplitBillCore;
+		};
+		34E50C8A300FCD2A000B30AF /* SplitBillRelay */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 34E50C89300FCCB5000B30AF /* XCLocalSwiftPackageReference "Packages/SplitBillRelay" */;
+			productName = SplitBillRelay;
+		};
+		34E50C8C300FD157000B30AF /* SplitBillRelay */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 34E50C89300FCCB5000B30AF /* XCLocalSwiftPackageReference "Packages/SplitBillRelay" */;
+			productName = SplitBillRelay;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

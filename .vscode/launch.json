@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:splitr}/splitr-relay",
+            "name": "Debug App (splitr-relay)",
+            "target": "App",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug App (splitr-relay)"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:splitr}/splitr-relay",
+            "name": "Release App (splitr-relay)",
+            "target": "App",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release App (splitr-relay)"
+        }
+    ]
+}
