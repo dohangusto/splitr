@@ -14,8 +14,20 @@ import SplitBillSync
 @MainActor
 enum AppComposition {
     static let store: any RoomStoring = {
-        // Fallback to MockRoomStore on physical devices to prevent CloudKit initialization crashes on personal developer accounts
-        MockRoomStore(rooms: MockData.rooms())
+        #if targetEnvironment(simulator)
+        return MockRoomStore(rooms: MockData.rooms())
+        #else
+        // Set this to true ONLY if you are using a Paid Apple Developer Account 
+        // and have configured CloudKit container entitlements for "iCloud.com.c4.splitr".
+        // Free/personal developer accounts will crash on startup if this is true.
+        let useCloudKit = false
+        
+        if useCloudKit {
+            return CloudKitRoomStore()
+        } else {
+            return MockRoomStore(rooms: MockData.rooms())
+        }
+        #endif
     }()
 
     /// The CloudKit store when active — push + share entry points need it.

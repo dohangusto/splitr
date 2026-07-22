@@ -111,11 +111,41 @@ private struct MenuItemRow: View {
             }
 
             //who's in + price
-            HStack {
+            HStack(alignment: .center) {
                 if let statusText {
-                    Text(statusText)
-                        .font(.caption)
-                        .foregroundColor(iAmIn ? Color("Blue2") : .secondary)
+                    HStack(spacing: 6) {
+                        // Overlapping Avatar Group on the left
+                        HStack(spacing: -6) {
+                            ForEach(item.participantIDs, id: \.self) { memberID in
+                                if let member = room.member(withID: memberID) {
+                                    Group {
+                                        if let uiImage = UIImage(named: member.avatarEmoji) {
+                                            Image(uiImage: uiImage)
+                                                .resizable()
+                                                .scaledToFill()
+                                        } else {
+                                            Text(member.avatarEmoji)
+                                                .font(.system(size: 11))
+                                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                                .background(Color(.systemGray6))
+                                        }
+                                    }
+                                    .frame(width: 20, height: 20)
+                                    .clipShape(Circle())
+                                    .overlay {
+                                        Circle()
+                                            .stroke(Color.white, lineWidth: 1.5)
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Status text on the right
+                        Text(statusText)
+                            .font(.caption)
+                            .foregroundColor(iAmIn ? Color("Blue2") : .secondary)
+                            .lineLimit(1)
+                    }
                 } else {
                     Text("Unclaimed")
                         .font(.caption)
@@ -198,14 +228,30 @@ struct MemberClaim: View {
         case .claiming, .settling, .closed:
             VStack(spacing: 0) {
                 ZStack(alignment: .top) {
-                    billList(room, actingID: actingID, interactive: room.state == .claiming)
+                    billList(room, actingID: actingID, interactive: room.state == .claiming || room.state == .settling)
                     
                     VStack(spacing: 0) {
-                        NavigationHeader(title: "Claim Item")
-                            .padding(.horizontal, 24)
-                            .padding(.top, 10)
-                            .padding(.bottom, 8)
-                            .background(Color(red: 0.90, green: 0.92, blue: 0.99).ignoresSafeArea(edges: .top))
+                        ZStack(alignment: .trailing) {
+                            NavigationHeader(title: "Claim Item")
+                            
+                            if room.state == .settling || room.state == .closed {
+                                Button {
+                                    navigateToPaymentStatus = true
+                                } label: {
+                                    Image(systemName: "creditcard")
+                                        .font(.system(size: 16, weight: .medium))
+                                        .foregroundColor(.black)
+                                        .frame(width: 44, height: 44)
+                                        .background(Color.white)
+                                        .clipShape(Circle())
+                                        .shadow(color: .black.opacity(0.08), radius: 6, y: 2)
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 24)
+                        .padding(.top, 10)
+                        .padding(.bottom, 8)
+                        .background(Color(red: 0.90, green: 0.92, blue: 0.99).ignoresSafeArea(edges: .top))
                         
                         LinearGradient(
                             gradient: Gradient(colors: [

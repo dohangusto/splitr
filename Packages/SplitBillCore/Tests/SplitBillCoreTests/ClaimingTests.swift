@@ -214,11 +214,10 @@ struct ClaimingTests {
 
         try room.advance(by: openHost.id)
         try room.advance(by: openHost.id)
-        let settlingSnapshot = room
-        #expect(throws: ClaimError.claimingNotAllowed(.settling)) {
-            var copy = settlingSnapshot
-            try copy.claim(itemID: item.id, in: bill.id, as: alice.id)
-        }
+        var settlingSnapshot = room
+        // Claiming is allowed in .settling state
+        try settlingSnapshot.claim(itemID: item.id, in: bill.id, as: alice.id)
+        #expect(settlingSnapshot.bill(withID: bill.id)?.item(withID: item.id)?.claimState.claimerIDs.contains(alice.id) == true)
     }
 
     @Test("Claims validate member, bill, and item existence")

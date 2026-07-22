@@ -263,40 +263,37 @@ private struct NearbyRadarView: View {
                     .position(center)
                     .shadow(color: Color.accentColor.opacity(0.4), radius: 3)
 
-                // Pulses breathing outward
+                // Pulses breathing outward (gentler and slower)
                 Circle()
-                    .stroke(Color.accentColor.opacity(pulse1 ? 0 : 0.4), lineWidth: 2.5)
+                    .stroke(Color.accentColor.opacity(pulse1 ? 0 : 0.25), lineWidth: 1.5)
                     .frame(width: centerSize, height: centerSize)
-                    .scaleEffect(pulse1 ? 3.0 : 1.0)
+                    .scaleEffect(pulse1 ? 1.8 : 1.0)
                     .position(center)
-                    .animation(.easeOut(duration: 2.2).repeatForever(autoreverses: false), value: pulse1)
+                    .animation(.easeOut(duration: 3.0).repeatForever(autoreverses: false), value: pulse1)
 
                 Circle()
-                    .stroke(Color.accentColor.opacity(pulse2 ? 0 : 0.35), lineWidth: 1.5)
+                    .stroke(Color.accentColor.opacity(pulse2 ? 0 : 0.2), lineWidth: 1.0)
                     .frame(width: centerSize, height: centerSize)
-                    .scaleEffect(pulse2 ? 2.3 : 1.0)
+                    .scaleEffect(pulse2 ? 1.4 : 1.0)
                     .position(center)
-                    .animation(.easeOut(duration: 2.2).repeatForever(autoreverses: false).delay(0.7), value: pulse2)
+                    .animation(.easeOut(duration: 3.0).repeatForever(autoreverses: false).delay(1.0), value: pulse2)
 
                 // Host at the center; the ranging dwell fills the outline.
                 ZStack {
                     Circle()
-                        .fill(.background)
-                        .shadow(color: .black.opacity(0.1), radius: 8, y: 2)
-                    Circle()
-                        .stroke(Color.accentColor.opacity(0.4), lineWidth: 2)
+                        .stroke(Color.accentColor.opacity(0.3), lineWidth: 1.5)
                     if let rangingProgress {
                         Circle()
                             .trim(from: 0, to: rangingProgress)
                             .stroke(
                                 rangingProgress >= 1 ? Color.green : Color.accentColor,
-                                style: StrokeStyle(lineWidth: 4, lineCap: .round)
+                                style: StrokeStyle(lineWidth: 3, lineCap: .round)
                             )
                             .rotationEffect(.degrees(-90))
                             .animation(.linear(duration: 0.1), value: rangingProgress)
                     }
                     
-                    // Blinking Icon1 and Icon2 instead of user profile
+                    // Natural blinking eye logo (Icon2 = open, Icon1 = closed)
                     ZStack {
                         Image("Icon1")
                             .resizable()
@@ -342,12 +339,18 @@ private struct NearbyRadarView: View {
         .onAppear {
             pulse1 = true
             pulse2 = true
-            withAnimation(.linear(duration: 3).repeatForever(autoreverses: false)) {
+            isIcon1Active = false // Start with open eye (Icon2)
+            withAnimation(.linear(duration: 6).repeatForever(autoreverses: false)) {
                 rotationAngle = 360
             }
-            Timer.scheduledTimer(withTimeInterval: 0.6, repeats: true) { _ in
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    isIcon1Active.toggle()
+            Timer.scheduledTimer(withTimeInterval: 4.0, repeats: true) { _ in
+                withAnimation(.easeInOut(duration: 0.12)) {
+                    isIcon1Active = true // close eye (Icon1)
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                    withAnimation(.easeInOut(duration: 0.12)) {
+                        isIcon1Active = false // open eye (Icon2)
+                    }
                 }
             }
         }

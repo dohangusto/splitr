@@ -220,7 +220,7 @@ public struct Room: Identifiable, Sendable, Hashable, Codable {
         in billID: UUID,
         portions: [(memberID: UUID, portion: Fraction)]
     ) throws {
-        guard state == .claiming else { throw ClaimError.claimingNotAllowed(state) }
+        guard state == .claiming || state == .settling else { throw ClaimError.claimingNotAllowed(state) }
         guard !portions.isEmpty else { throw ClaimError.noClaimers }
         guard Set(portions.map(\.memberID)).count == portions.count else {
             throw ClaimError.duplicateClaimers
@@ -253,7 +253,7 @@ public struct Room: Identifiable, Sendable, Hashable, Codable {
     /// Joining an unclaimed item claims it whole; force-assigned items are
     /// host-owned and conflict.
     public mutating func joinClaim(itemID: UUID, in billID: UUID, as memberID: UUID) throws {
-        guard state == .claiming else { throw ClaimError.claimingNotAllowed(state) }
+        guard state == .claiming || state == .settling else { throw ClaimError.claimingNotAllowed(state) }
         guard member(withID: memberID) != nil else {
             throw ClaimError.memberNotFound(memberID)
         }
@@ -279,7 +279,7 @@ public struct Room: Identifiable, Sendable, Hashable, Codable {
     /// `.unclaimed` (remaining portions would no longer sum to 1).
     /// Force-assignments can only be undone by the host via `forceAssign`.
     public mutating func releaseClaim(itemID: UUID, in billID: UUID, as memberID: UUID) throws {
-        guard state == .claiming else { throw ClaimError.claimingNotAllowed(state) }
+        guard state == .claiming || state == .settling else { throw ClaimError.claimingNotAllowed(state) }
         try mutateItem(itemID: itemID, in: billID) { item in
             guard case .claimed(let claims) = item.claimState,
                   claims.contains(where: { $0.memberID == memberID }) else {
@@ -297,7 +297,7 @@ public struct Room: Identifiable, Sendable, Hashable, Codable {
         by actorID: UUID
     ) throws {
         try requireHost(actorID)
-        guard state == .claiming else { throw ClaimError.claimingNotAllowed(state) }
+        guard state == .claiming || state == .settling else { throw ClaimError.claimingNotAllowed(state) }
         guard member(withID: memberID) != nil else {
             throw ClaimError.memberNotFound(memberID)
         }
