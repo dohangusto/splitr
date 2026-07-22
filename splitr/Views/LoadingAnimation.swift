@@ -65,8 +65,8 @@ struct GIFImageView: UIViewRepresentable {
 
 struct LoadingAnimationView: View {
     var body: some View {
-        GIFImageView(gifName: "loadingAnimation", size: CGSize(width: 100, height: 100))
-            .frame(width: 100, height: 100)
+        GIFImageView(gifName: "loadingAnimation", size: CGSize(width: 50, height: 50))
+            .frame(width: 50, height: 50)
     }
 }
 

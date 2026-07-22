@@ -349,7 +349,16 @@ struct HomePageView: View {
             .padding(.horizontal, 20)
             .padding(.top, 20)
             
-            if activeRooms.isEmpty {
+            if store.isLoadingRooms {
+                VStack(spacing: 12) {
+                    LoadingAnimationView()
+                    Text("Loading transaction...")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 32)
+            } else if activeRooms.isEmpty {
                 VStack(spacing: 16) {
                     Image("EmptyTransaction")
                         .resizable()
@@ -451,4 +460,8 @@ struct HomePageView: View {
 
 #Preview("Home Screen Layout") {
     HomePageView(store: MockRoomStore(rooms: MockData.rooms()))
+}
+
+#Preview("Home Screen - Loading") {
+    HomePageView(store: MockRoomStore(rooms: [], isLoadingRooms: true))
 }

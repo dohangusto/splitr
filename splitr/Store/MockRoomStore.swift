@@ -12,14 +12,14 @@ import UIKit
 final class MockRoomStore: RoomStoring {
     private(set) var rooms: [Room]
     var alert: StoreAlert?
-    /// In-memory data is available immediately.
-    let isLoadingRooms = false
+    var isLoadingRooms = false
 
     /// Per-room "acting as" member for the debug perspective switcher.
     private var actingByRoom: [UUID: UUID] = [:]
 
-    init(rooms: [Room] = []) {
+    init(rooms: [Room] = [], isLoadingRooms: Bool = false) {
         self.rooms = rooms
+        self.isLoadingRooms = isLoadingRooms
     }
 
     func room(withID id: UUID) -> Room? {
