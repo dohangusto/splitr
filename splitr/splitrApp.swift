@@ -14,11 +14,8 @@ import SplitBillSync
 @MainActor
 enum AppComposition {
     static let store: any RoomStoring = {
-        #if targetEnvironment(simulator)
+        // Fallback to MockRoomStore on physical devices to prevent CloudKit initialization crashes on personal developer accounts
         MockRoomStore(rooms: MockData.rooms())
-        #else
-        CloudKitRoomStore()
-        #endif
     }()
 
     /// The CloudKit store when active — push + share entry points need it.
@@ -37,10 +34,22 @@ enum AppComposition {
 @main
 struct splitrApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+    @State private var isShowingSplash = true
 
     var body: some Scene {
         WindowGroup {
-            HomePageView(store: AppComposition.store)
+            if isShowingSplash {
+                SplashScreen {
+                    isShowingSplash = false
+                }
+            } else if hasCompletedOnboarding {
+                HomePageView(store: AppComposition.store)
+            } else {
+                OnboardingView {
+                    hasCompletedOnboarding = true
+                }
+            }
         }
     }
 }

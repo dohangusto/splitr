@@ -32,6 +32,7 @@ protocol RoomStoring: AnyObject, Observable {
     @discardableResult
     func createRoom(named name: String, hostName: String, hostEmoji: String) -> Room
     func joinMember(named name: String, emoji: String, roomID: UUID)
+    func renameRoom(roomID: UUID, to newName: String)
 
     func advance(roomID: UUID)
     func rollbackToClaiming(roomID: UUID)
@@ -50,4 +51,14 @@ protocol RoomStoring: AnyObject, Observable {
 
     func markPaid(roomID: UUID)
     func confirmPayment(of memberID: UUID, roomID: UUID)
+
+    func inviteURL(roomID: UUID) async -> URL?
+    func addMember(_ member: Member, roomID: UUID)
+    func acceptShare(from url: URL) async -> Bool
+    func waitForRoom(id: UUID) async -> Bool
+    func resetAllData()
+}
+
+extension RoomStoring {
+    func resetAllData() {}
 }

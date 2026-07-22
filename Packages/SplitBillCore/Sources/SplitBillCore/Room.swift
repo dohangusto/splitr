@@ -77,6 +77,21 @@ public struct Room: Identifiable, Sendable, Hashable, Codable {
         }
     }
 
+    /// Whole-rupiah value of everything the member has claimed so far,
+    /// portion-aware, floored — the "your items so far" running total shown
+    /// during claiming (before tax and service are allocated).
+    public func claimedSubtotal(for memberID: UUID) -> Int {
+        claims(for: memberID)
+            .reduce(Fraction.zero) { total, claim in
+                let price = bills
+                    .lazy
+                    .compactMap { $0.item(withID: claim.itemID) }
+                    .first?.unitPrice ?? 0
+                return total + claim.portion * price
+            }
+            .flooredValue
+    }
+
     // MARK: - State machine (host-only)
 
     /// Advances `open → claiming → settling → closed`. Throws from `.closed`.

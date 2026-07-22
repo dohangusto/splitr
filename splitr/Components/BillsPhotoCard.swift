@@ -3,12 +3,30 @@
 //  splitr
 //
 
+import SplitBillCore
 import SwiftUI
 
 struct BillsPhotoCard: View {
 
-    let photos: [String]
+    /// The list of bills in the room. We extract photos that exist.
+    let bills: [Bill]
     var onAddTapped: () -> Void = {}
+    var onPhotoTapped: (Bill, UIImage) -> Void = { _, _ in }
+
+    private struct DisplayPhoto: Identifiable {
+        let id: UUID
+        let bill: Bill
+        let image: UIImage
+    }
+
+    private var displayPhotos: [DisplayPhoto] {
+        bills.compactMap { bill in
+            guard let ref = bill.photoReference else { return nil }
+            let image = ReceiptPhotoStore.load(ref) ?? UIImage(named: ref)
+            guard let image else { return nil }
+            return DisplayPhoto(id: bill.id, bill: bill, image: image)
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -28,14 +46,19 @@ struct BillsPhotoCard: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 14) {
 
-                        ForEach(photos, id: \.self) { photo in
-                            Image(photo)
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: 90, height: 90)
-                                .clipShape(
-                                    RoundedRectangle(cornerRadius: 18)
-                                )
+                        ForEach(displayPhotos) { item in
+                            Button {
+                                onPhotoTapped(item.bill, item.image)
+                            } label: {
+                                Image(uiImage: item.image)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 90, height: 90)
+                                    .clipShape(
+                                        RoundedRectangle(cornerRadius: 18)
+                                    )
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                 }
@@ -80,12 +103,7 @@ struct BillsPhotoCard: View {
             .ignoresSafeArea()
 
         BillsPhotoCard(
-            photos: [
-                "receipt1",
-                "receipt2",
-                "receipt1",
-                "receipt2"
-            ]
+            bills: MockData.rooms()[0].bills
         ) {
             print("Tambah foto")
         }

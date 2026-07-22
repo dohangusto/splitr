@@ -90,6 +90,12 @@ final class CloudKitRoomStore: RoomStoring {
         }
     }
 
+    func renameRoom(roomID: UUID, to newName: String) {
+        mutate(roomID) { room, _ in
+            room.name = newName
+        }
+    }
+
     func advance(roomID: UUID) {
         mutate(roomID) { room, actor in try room.advance(by: actor) }
     }
@@ -190,8 +196,20 @@ final class CloudKitRoomStore: RoomStoring {
         }
     }
 
+    func waitForRoom(id: UUID) async -> Bool {
+        await waitForRoom(id: id, timeout: 30)
+    }
+
+    func resetAllData() {
+        rooms.removeAll()
+        alert = nil
+        actingByRoom.removeAll()
+        pendingPushes.forEach { $0.cancel() }
+        pendingPushes = []
+    }
+
     /// Waits (with periodic refetches) until a just-joined room syncs in.
-    func waitForRoom(id: UUID, timeout: TimeInterval = 30) async -> Bool {
+    func waitForRoom(id: UUID, timeout: TimeInterval) async -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             if room(withID: id) != nil { return true }

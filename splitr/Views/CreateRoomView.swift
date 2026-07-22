@@ -7,8 +7,7 @@ struct CreateRoomView: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var roomName = ""
-    @State private var hostName = UserDefaults.standard.string(forKey: "splitr.user_display_name") ?? ""
-    @State private var emoji = UserDefaults.standard.string(forKey: "splitr.user_avatar_emoji") ?? "🧑‍🍳"
+    @State private var profile = UserProfile.load()
 
     var body: some View {
         NavigationStack {
@@ -17,8 +16,23 @@ struct CreateRoomView: View {
                     TextField("Room name (e.g. Makan Malam Tim)", text: $roomName)
                 }
                 Section("You") {
-                    TextField("Your display name", text: $hostName)
-                    EmojiPicker(selection: $emoji)
+                    HStack(spacing: 16) {
+                        Image(profile.avatar)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 60, height: 60)
+                            .clipShape(Circle())
+                            .overlay(Circle().stroke(Color(.systemGray5), lineWidth: 1))
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            TextField("Your display name", text: $profile.name)
+                                .font(.headline)
+                            Text("Profile Photo")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 4)
                 }
             }
             .navigationTitle("Create Room")
@@ -29,18 +43,16 @@ struct CreateRoomView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Create") {
-                        let trimmedHostName = hostName.trimmingCharacters(in: .whitespaces)
-                        UserDefaults.standard.set(trimmedHostName, forKey: "splitr.user_display_name")
-                        UserDefaults.standard.set(emoji, forKey: "splitr.user_avatar_emoji")
+                        profile.save()
                         store.createRoom(
                             named: roomName.trimmingCharacters(in: .whitespaces),
-                            hostName: trimmedHostName,
-                            hostEmoji: emoji
+                            hostName: profile.name,
+                            hostEmoji: profile.avatar
                         )
                         dismiss()
                     }
                     .disabled(roomName.trimmingCharacters(in: .whitespaces).isEmpty
-                        || hostName.trimmingCharacters(in: .whitespaces).isEmpty)
+                        || profile.name.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
         }
@@ -54,14 +66,14 @@ struct JoinMemberView: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
-    @State private var emoji = "🙂"
+    @State private var avatar = AvatarCatalog.defaultName
 
     var body: some View {
         NavigationStack {
             Form {
                 Section("New member") {
                     TextField("Display name", text: $name)
-                    EmojiPicker(selection: $emoji)
+                    AvatarPicker(selection: $avatar)
                 }
             }
             .navigationTitle("Add Member")
@@ -74,41 +86,13 @@ struct JoinMemberView: View {
                     Button("Add") {
                         store.joinMember(
                             named: name.trimmingCharacters(in: .whitespaces),
-                            emoji: emoji,
+                            emoji: avatar,
                             roomID: roomID
                         )
                         dismiss()
                     }
                     .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
-            }
-        }
-    }
-}
-
-struct EmojiPicker: View {
-    @Binding var selection: String
-
-    private static let options = [
-        "🧑‍🍳", "🐱", "🦖", "🌺", "🐨", "🦊", "🐼", "🐸",
-        "🦁", "🐰", "🐧", "🦉", "🍜", "🍣", "🍕", "🧋",
-    ]
-
-    var body: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 8), spacing: 8) {
-            ForEach(Self.options, id: \.self) { option in
-                Button {
-                    selection = option
-                } label: {
-                    Text(option)
-                        .font(.title2)
-                        .padding(6)
-                        .background(
-                            selection == option ? Color.accentColor.opacity(0.2) : .clear,
-                            in: .circle
-                        )
-                }
-                .buttonStyle(.plain)
             }
         }
     }

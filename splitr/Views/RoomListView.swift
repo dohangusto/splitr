@@ -126,7 +126,7 @@ struct RoomListView: View {
             .toolbarTitleDisplayMode(.inlineLarge)
             .toolbar { roomsToolbar }
             .navigationDestination(for: UUID.self) { roomID in
-                RoomDetailView(store: store, roomID: roomID)
+                RoomRootView(store: store, roomID: roomID)
             }
             .navigationDestination(isPresented: $showProfile) {
                 ProfileView(profile: $profile)
@@ -200,7 +200,7 @@ struct RoomListView: View {
             .navigationTitle("History")
             .toolbarTitleDisplayMode(.inlineLarge)
             .navigationDestination(for: UUID.self) { roomID in
-                RoomDetailView(store: store, roomID: roomID)
+                RoomRootView(store: store, roomID: roomID)
             }
         }
     }
@@ -379,10 +379,7 @@ private struct RoomGlance {
             } else {
                 let owed = settlement.settlement(for: me)?.totalOwed ?? 0
                 switch room.member(withID: me)?.paymentStatus {
-                case .memberMarkedPaid:
-                    headline = "\(owed.rupiah) — waiting for the host to confirm"
-                    waitingOnMe = nil
-                case .hostConfirmed:
+                case .memberMarkedPaid, .hostConfirmed:
                     headline = "Settled — you paid \(owed.rupiah)"
                     waitingOnMe = nil
                 default:

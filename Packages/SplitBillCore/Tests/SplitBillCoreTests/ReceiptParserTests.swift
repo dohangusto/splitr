@@ -358,4 +358,71 @@ struct ReceiptParserTests {
         #expect(parsed.items.count == 1)
         #expect(parsed.items[0].price == 24_000)
     }
+
+    @Test("Receipt items with various price formats without Rp")
+    func noRpFormats() {
+        // Test standard with dot thousands separator
+        let parsedDot = ReceiptParser.parse(text: "Nasi Goreng 15.000")
+        #expect(parsedDot.items.count == 1)
+        #expect(parsedDot.items.first?.price == 15_000)
+
+        // Test plain integer
+        let parsedPlain = ReceiptParser.parse(text: "Nasi Goreng 15000")
+        #expect(parsedPlain.items.count == 1)
+        #expect(parsedPlain.items.first?.price == 15_000)
+
+        // Test decimal with two zeros (US/standard style)
+        let parsedDecimal = ReceiptParser.parse(text: "Nasi Goreng 15000.00")
+        #expect(parsedDecimal.items.count == 1)
+        #expect(parsedDecimal.items.first?.price == 15_000)
+
+        // Test decimal with comma and two zeros
+        let parsedDecimalComma = ReceiptParser.parse(text: "Nasi Goreng 15000,00")
+        #expect(parsedDecimalComma.items.count == 1)
+        #expect(parsedDecimalComma.items.first?.price == 15_000)
+
+        // Test short thousands notation (e.g. 15.00 meaning 15k)
+        let parsedShort = ReceiptParser.parse(text: "Nasi Goreng 15.00")
+        #expect(parsedShort.items.count == 1)
+        #expect(parsedShort.items.first?.price == 15_000)
+    }
+
+    @Test("Rasea Haji Nawi style receipt")
+    func raseaHajiNawiReceipt() {
+        let text = """
+            Rasea Haji Nawi
+            Jakarta Selatan Kita, DKI JAKARTA
+            Indonesia
+            Waktu Penjualan          Kasir
+            21 Jul 2026 15:57    RaseaNawi
+            #968F26072100000015    1 Tamu
+            -------------------------------
+            Item                    Jumlah
+            -------------------------------
+            Pizza Mie
+                   23.000 x1        23.000
+            Aqua botol 600 ml
+            Tambah Ice
+                   10.000 x1        10.000
+            Nasi Sarden Cabe
+                   37.000 x1        37.000
+            -------------------------------
+            Subtotal                70.000
+            PB1 10%                  7.000
+            Grand Total          Rp 77.000
+            QRIS by Netzme       Rp 77.000
+            """
+        let parsed = ReceiptParser.parse(text: text)
+        // Pizza Mie (1), Tambah Ice (1), Nasi Sarden Cabe (1).
+        // Total items expected: 3
+        #expect(parsed.items.count == 3)
+        #expect(parsed.items[0].name == "Pizza Mie")
+        #expect(parsed.items[0].price == 23_000)
+        #expect(parsed.items[1].name == "Tambah Ice")
+        #expect(parsed.items[1].price == 10_000)
+        #expect(parsed.items[2].name == "Nasi Sarden Cabe")
+        #expect(parsed.items[2].price == 37_000)
+    }
 }
+
+

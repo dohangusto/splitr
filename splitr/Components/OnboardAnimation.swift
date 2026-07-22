@@ -202,22 +202,23 @@ struct OnboardAnimation: View {
             )
 
             while !Task.isCancelled {
-
+                // Mata terbuka (stay phase)
                 isBlinking = false
+                try? await Task.sleep(for: .seconds(2.5))
 
-                // Mata terbuka
-                try? await Task.sleep(
-                    for: .seconds(2.5)
-                )
-
-                // Mata tertutup
+                // Kedip 1 (mata tertutup)
                 isBlinking = true
+                try? await Task.sleep(for: .seconds(0.12))
 
-                try? await Task.sleep(
-                    for: .seconds(0.15)
-                )
+                // Buka mata sebentar
+                isBlinking = false
+                try? await Task.sleep(for: .seconds(0.12))
 
-                // Mata terbuka
+                // Kedip 2 (mata tertutup)
+                isBlinking = true
+                try? await Task.sleep(for: .seconds(0.12))
+
+                // Mata terbuka kembali
                 isBlinking = false
             }
         }

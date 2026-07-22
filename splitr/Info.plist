@@ -4,10 +4,16 @@
 <dict>
 	<key>CKSharingSupported</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>splitr needs the camera to scan your receipt.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>splitr needs access to your photo library to let you pick an existing receipt.</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_splitr-join._tcp</string>
 		<string>_splitr-join._udp</string>
+		<string>_splitr-sync._tcp</string>
+		<string>_splitr-sync._udp</string>
 	</array>
 	<key>UIBackgroundModes</key>
 	<array>

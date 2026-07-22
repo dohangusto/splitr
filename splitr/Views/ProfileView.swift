@@ -46,6 +46,14 @@ struct UserProfile {
         defaults.set(avatar, forKey: Self.avatarKey)
         defaults.removeObject(forKey: Self.legacyEmojiKey)
     }
+
+    static func reset() {
+        let defaults = UserDefaults.standard
+        defaults.removeObject(forKey: Self.nameKey)
+        defaults.removeObject(forKey: Self.avatarKey)
+        defaults.removeObject(forKey: Self.legacyEmojiKey)
+        defaults.set(false, forKey: "hasCompletedOnboarding")
+    }
 }
 
 // MARK: - ProfileView
@@ -54,10 +62,12 @@ struct UserProfile {
 /// confirm button saves them and pops back.
 struct ProfileView: View {
     @Binding var profile: UserProfile
+    var onReset: (() -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
     @State private var avatar = AvatarCatalog.defaultName
+    @State private var showResetConfirmation = false
 
     private var trimmedName: String {
         name.trimmingCharacters(in: .whitespaces)
@@ -80,6 +90,12 @@ struct ProfileView: View {
                 AvatarPicker(selection: $avatar)
                     .listRowInsets(EdgeInsets())
             }
+            Section {
+                Button("Reset all data", role: .destructive) {
+                    showResetConfirmation = true
+                }
+                .frame(maxWidth: .infinity)
+            }
         }
         // Hide the default Form background so the asset color shows through.
         .scrollContentBackground(.hidden)
@@ -96,6 +112,21 @@ struct ProfileView: View {
                 }
                 .disabled(trimmedName.isEmpty)
             }
+        }
+        .confirmationDialog(
+            "Reset all data?",
+            isPresented: $showResetConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Reset and return to onboarding", role: .destructive) {
+                UserProfile.reset()
+                profile = UserProfile.load()
+                onReset?()
+                dismiss()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This clears your profile, removes saved rooms, and takes you back to the welcome screen.")
         }
         .onAppear {
             name = profile.name

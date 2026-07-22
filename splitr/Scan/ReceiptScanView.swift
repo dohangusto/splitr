@@ -96,10 +96,42 @@ struct ReceiptScanFlow: View {
     private func scan(_ image: UIImage) async {
         do {
             let result = try await ReceiptScanPipeline.scan(image, recognizer: recognizer)
-            phase = .review(result.parsed, photo: result.corrected)
+            saveDirectly(result.parsed, photo: result.corrected)
         } catch {
             // The draft dies here — retry or cancel, never a phantom.
             phase = .failed("Text recognition failed. Try again, or enter the bill manually.")
         }
+    }
+
+    private func saveDirectly(_ parsed: ParsedReceipt, photo: UIImage?) {
+        let validItems = parsed.items.filter {
+            !$0.name.trimmingCharacters(in: .whitespaces).isEmpty && ($0.price ?? 0) > 0
+        }
+        
+        let billItems = validItems.flatMap { draft in
+            (0..<draft.qty).map { _ in
+                BillItem(
+                    name: draft.name.trimmingCharacters(in: .whitespaces),
+                    unitPrice: draft.price ?? 0
+                )
+            }
+        }
+        
+        var photoReference: String?
+        if let photo { photoReference = ReceiptPhotoStore.save(photo) }
+        
+        let rawMerchantName = parsed.merchantName?.trimmingCharacters(in: .whitespaces) ?? ""
+        let merchant = rawMerchantName.isEmpty ? "Receipt" : rawMerchantName
+        
+        let bill = Bill(
+            merchantName: merchant,
+            photoReference: photoReference,
+            taxRate: .percent(parsed.taxPercent ?? 10),
+            serviceChargeRate: .percent(parsed.servicePercent ?? 0),
+            taxBasis: parsed.taxBasis ?? .subtotalPlusService,
+            items: billItems
+        )
+        store.addBill(bill, roomID: roomID)
+        dismiss()
     }
 }

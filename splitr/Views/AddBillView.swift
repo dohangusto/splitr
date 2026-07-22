@@ -32,8 +32,8 @@ struct AddBillForm: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var merchant = ""
-    @State private var taxPercent = 10
-    @State private var servicePercent = 5
+    @State private var taxPercent = 0
+    @State private var servicePercent = 0
     @State private var taxBasis: TaxBasis = .subtotalPlusService
     @State private var items: [DraftItem] = [DraftItem()]
     @State private var displayedPhoto: UIImage?
@@ -225,7 +225,7 @@ struct AddBillForm: View {
     }
 }
 
-private struct DraftItemRow: View {
+struct DraftItemRow: View {
     @Binding var item: DraftItem
 
     var body: some View {

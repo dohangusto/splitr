@@ -4,24 +4,38 @@
 //
 
 import SwiftUI
+import SplitBillCore
 
+/// Roster of the room's members, plus the host's ways of adding people.
+/// Wired to the store: the list is `room.members`, and "Add new" routes to
+/// the existing add flows (nearby / invite link / manual) rather than
+/// creating local-only people.
 struct PeopleListSheet: View {
-    
+
+    let store: any RoomStoring
+    let roomID: UUID
+
     @Environment(\.dismiss) private var dismiss
-    
-    @Binding var people: [Person]
-    @State private var showingAddAlert = false
-    @State private var newName = ""
-    
+    @State private var showAddOptions = false
+    @State private var showJoinMember = false
+    @State private var showNearbyHost = false
+    @State private var inviteURL: URL?
+
+    private var room: Room? { store.room(withID: roomID) }
+    /// New members can join only before settling starts.
+    private var canAdd: Bool {
+        room.map { $0.state == .open || $0.state == .claiming } ?? false
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            
+
             // MARK: - Header
             ZStack {
                 Text("List people")
                     .font(.system(size: 20, weight: .semibold))
                     .foregroundStyle(.black)
-                
+
                 HStack {
                     // Close Button
                     Button {
@@ -34,37 +48,39 @@ struct PeopleListSheet: View {
                             .background(Color.gray.opacity(0.12))
                             .clipShape(Circle())
                     }
-                    
+
                     Spacer()
-                    
+
                     // Add New Button
-                    Button {
-                        addNewPerson()
-                    } label: {
-                        Text("Add new")
-                            .font(.system(size: 18, weight: .medium))
-                            .foregroundStyle(.black.opacity(0.7))
-                            .padding(.horizontal, 20)
-                            .frame(height: 56)
-                            .background(.white)
-                            .clipShape(Capsule())
-                            .shadow(
-                                color: .black.opacity(0.08),
-                                radius: 20,
-                                x: 0,
-                                y: 8
-                            )
+                    if canAdd {
+                        Button {
+                            addNewTapped()
+                        } label: {
+                            Text("Add new")
+                                .font(.system(size: 18, weight: .medium))
+                                .foregroundStyle(.black.opacity(0.7))
+                                .padding(.horizontal, 20)
+                                .frame(height: 56)
+                                .background(.white)
+                                .clipShape(Capsule())
+                                .shadow(
+                                    color: .black.opacity(0.08),
+                                    radius: 20,
+                                    x: 0,
+                                    y: 8
+                                )
+                        }
                     }
                 }
             }
             .padding(.horizontal, 24)
             .padding(.top, 24)
-            
+
             // MARK: - People List
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 12) {
-                    ForEach(people) { person in
-                        PersonRow(person: person)
+                    ForEach(room?.members ?? []) { member in
+                        PersonRow(member: member)
                     }
                 }
                 .padding(.horizontal, 24)
@@ -78,26 +94,40 @@ struct PeopleListSheet: View {
                 blue: 0.98
             )
         )
-        .alert("Add New Person", isPresented: $showingAddAlert) {
-            TextField("Name", text: $newName)
-            Button("Add") {
-                let name = newName.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !name.isEmpty {
-                    let avatar = "avatar\(Int.random(in: 1...4))"
-                    let newPerson = Person(name: name, avatar: avatar)
-                    people.append(newPerson)
-                }
-            }
+        .confirmationDialog("Add people", isPresented: $showAddOptions) {
+            Button("Add People Nearby") { showNearbyHost = true }
+            Button("Invite via Link") { fetchInviteURL() }
+            Button("Add Member Manually") { showJoinMember = true }
             Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Enter the name of the new person.")
+        }
+        .sheet(isPresented: $showJoinMember) {
+            JoinMemberView(store: store, roomID: roomID)
+        }
+        .sheet(isPresented: $showNearbyHost) {
+            if let room {
+                NearbyHostView(
+                    store: store,
+                    roomID: roomID,
+                    roomName: room.name,
+                    hostDisplayName: room.member(withID: room.hostMemberID)?.displayName ?? "Host",
+                    onUseLink: { fetchInviteURL() }
+                )
+            }
+        }
+        .sheet(item: $inviteURL) { url in
+            ShareLinkSheet(url: url, roomName: room?.name ?? "")
         }
     }
-    
-    // MARK: - Add New Person
-    private func addNewPerson() {
-        newName = ""
-        showingAddAlert = true
+
+    /// Allows the host to choose between Nearby Interaction, invite link, or manual entry.
+    private func addNewTapped() {
+        showAddOptions = true
+    }
+
+    private func fetchInviteURL() {
+        Task {
+            inviteURL = await store.inviteURL(roomID: roomID)
+        }
     }
 }
 
@@ -105,29 +135,44 @@ struct PeopleListSheet: View {
 // MARK: - Person Row
 
 struct PersonRow: View {
-    
-    let person: Person
-    
+
+    let member: Member
+
     var body: some View {
         HStack(spacing: 16) {
-            
-            Image(person.avatar)
-                .resizable()
-                .scaledToFill()
-                .frame(width: 48, height: 48)
-                .clipShape(Circle())
-                .overlay {
-                    Circle()
-                        .stroke(
-                            Color.gray.opacity(0.15),
-                            lineWidth: 1
-                        )
+
+            Group {
+                if let uiImage = UIImage(named: member.avatarEmoji) {
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    Text(member.avatarEmoji)
+                        .font(.system(size: 26))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(Color(.systemGray6))
                 }
-            
-            Text(person.name)
+            }
+            .frame(width: 48, height: 48)
+            .clipShape(Circle())
+            .overlay {
+                Circle()
+                    .stroke(
+                        Color.gray.opacity(0.15),
+                        lineWidth: 1
+                    )
+            }
+
+            Text(member.displayName)
                 .font(.system(size: 19, weight: .medium))
                 .foregroundStyle(.black)
-            
+
+            if member.isHost {
+                Text("Host")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Spacer()
         }
         .padding(.horizontal, 16)
@@ -140,22 +185,9 @@ struct PersonRow: View {
 }
 
 
-// MARK: - Person Model
-
-struct Person: Identifiable {
-    let id = UUID()
-    let name: String
-    let avatar: String
-}
-
-
 // MARK: - Preview
 
 #Preview {
-    PeopleListSheet(people: .constant([
-        Person(name: "Hano Ngoding", avatar: "avatar1"),
-        Person(name: "Noorfi Github", avatar: "avatar2"),
-        Person(name: "Husni Ilustrator", avatar: "avatar3"),
-        Person(name: "Bray Layout", avatar: "avatar4")
-    ]))
+    let store = MockRoomStore(rooms: MockData.rooms())
+    PeopleListSheet(store: store, roomID: store.rooms[0].id)
 }

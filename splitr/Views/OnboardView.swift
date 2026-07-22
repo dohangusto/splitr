@@ -7,6 +7,10 @@
 import SwiftUI
 
 struct OnboardingView: View {
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding: Bool = false
+    var onGetStarted: (() -> Void)? = nil
+
+    @State private var currentPage = 0
 
     var body: some View {
 
@@ -34,13 +38,25 @@ struct OnboardingView: View {
                 Spacer()
 
 
-                // MARK: - Animation
+                // MARK: - Animation Slider
 
-                OnboardAnimation()
-                    .frame(
-                        width: 420,
-                        height: 420
-                    )
+                TabView(selection: $currentPage) {
+                    FloatingBillAnimation()
+                        .frame(
+                            width: 420,
+                            height: 500
+                        )
+                        .tag(0)
+                    
+                    OnboardAnimation()
+                        .frame(
+                            width: 420,
+                            height: 500
+                        )
+                        .tag(1)
+                }
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .frame(height: 500)
 
 
                 Spacer()
@@ -49,42 +65,94 @@ struct OnboardingView: View {
                 // MARK: - Text Content
 
                 VStack(spacing: 12) {
+                    if currentPage == 0 {
+                        Text("Multiple Bills")
+                            .font(
+                                .system(
+                                    size: 32,
+                                    weight: .bold
+                                )
+                            )
+                            .foregroundStyle(.black)
+                            .transition(.asymmetric(insertion: .opacity, removal: .opacity))
 
-                    Text("Split Together")
+                        Text(
+                            "Add as many bills as you need and split\nevery expense with everyone involved."
+                        )
                         .font(
                             .system(
-                                size: 32,
-                                weight: .bold
+                                size: 17,
+                                weight: .regular
                             )
                         )
-                        .foregroundStyle(.black)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .lineSpacing(5)
+                        .transition(.asymmetric(insertion: .opacity, removal: .opacity))
+                    } else {
+                        Text("Split Together")
+                            .font(
+                                .system(
+                                    size: 32,
+                                    weight: .bold
+                                )
+                            )
+                            .foregroundStyle(.black)
+                            .transition(.asymmetric(insertion: .opacity, removal: .opacity))
 
-
-                    Text(
-                        "Join instantly with Nearby and split\nevery bill easily with your friends."
-                    )
-                    .font(
-                        .system(
-                            size: 17,
-                            weight: .regular
+                        Text(
+                            "Join instantly with Nearby and split\nevery bill easily with your friends."
                         )
-                    )
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(5)
+                        .font(
+                            .system(
+                                size: 17,
+                                weight: .regular
+                            )
+                        )
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .lineSpacing(5)
+                        .transition(.asymmetric(insertion: .opacity, removal: .opacity))
+                    }
                 }
+                .animation(.easeInOut(duration: 0.25), value: currentPage)
+                .frame(height: 110) // Fixed height to prevent vertical content shifting
 
 
-                // MARK: - Get Started Button
+                // MARK: - Slider Dots Indicator
+
+                HStack(spacing: 8) {
+                    ForEach(0..<2) { index in
+                        Button {
+                            withAnimation {
+                                currentPage = index
+                            }
+                        } label: {
+                            Capsule()
+                                .fill(currentPage == index ? Color(red: 78/255, green: 124/255, blue: 247/255) : Color.black.opacity(0.1))
+                                .frame(width: currentPage == index ? 20 : 8, height: 8)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: currentPage)
+                .padding(.top, 20)
+
+
+                // MARK: - Navigation Button
 
                 Button {
-
-                    // Navigate ke halaman berikutnya
-                    // Tambahkan action di sini
-
+                    if currentPage < 1 {
+                        withAnimation {
+                            currentPage += 1
+                        }
+                    } else {
+                        hasCompletedOnboarding = true
+                        onGetStarted?()
+                    }
                 } label: {
 
-                    Text("Get Started")
+                    Text(currentPage == 1 ? "Get Started" : "Continue")
                         .font(
                             .system(
                                 size: 17,

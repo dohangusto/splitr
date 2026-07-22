@@ -71,8 +71,9 @@ final class ProximityJoinCoordinator {
     private(set) var joinedFriends: [JoinedFriend] = []
     /// Increments once per gesture fire — drives haptics.
     private(set) var gestureFires = 0
+    private(set) var joinedRoomID: UUID?
 
-    private let store: CloudKitRoomStore
+    private let store: any RoomStoring
     private let transport: any ProximityTransport
     private let rangingProvider: any ProximityRanging
 
@@ -112,7 +113,7 @@ final class ProximityJoinCoordinator {
     var isHost: Bool { hostRoom != nil }
 
     init(
-        store: CloudKitRoomStore,
+        store: any RoomStoring,
         transport: (any ProximityTransport)? = nil,
         ranging: (any ProximityRanging)? = nil
     ) {
@@ -164,6 +165,7 @@ final class ProximityJoinCoordinator {
         joinedFriends = []
         hostRoom = nil
         joinerIdentity = nil
+        joinedRoomID = nil
     }
 
     // MARK: - Flow
@@ -317,6 +319,14 @@ final class ProximityJoinCoordinator {
         }
     }
 
+    /// Host: manually force a join without waiting for UWB proximity tap.
+    func forceJoin(peerName: String) {
+        guard isHost else { return }
+        if let context = peers.values.first(where: { $0.peer.displayName == peerName }) {
+            sendInvitation(to: context)
+        }
+    }
+
     /// Host, when a peer completes the gesture: assign their identity,
     /// write the member record, hand over the invitation — then release
     /// only that peer's ranging. Other peers keep ranging; whoever taps
@@ -369,6 +379,7 @@ final class ProximityJoinCoordinator {
                 return
             }
             store.setActingMember(invitation.memberID, in: invitation.roomID)
+            joinedRoomID = invitation.roomID
             transport.stop()
             phase = .joined(roomName: invitation.roomName)
         }

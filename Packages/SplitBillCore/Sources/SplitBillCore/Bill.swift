@@ -74,4 +74,27 @@ public struct Bill: Identifiable, Sendable, Hashable, Codable {
     public func item(withID id: UUID) -> BillItem? {
         items.first { $0.id == id }
     }
+
+    /// Service charge on the subtotal, rounded to whole rupiah like the
+    /// printed receipt. Claim-independent: valid before claiming completes.
+    public var serviceChargeTotal: Int {
+        (serviceChargeRate.fraction * subtotal).roundedHalfUpValue
+    }
+
+    /// PB1 tax on the bill's `taxBasis`, rounded to whole rupiah.
+    public var taxTotal: Int {
+        let base: Int
+        switch taxBasis {
+        case .subtotal:
+            base = subtotal
+        case .subtotalPlusService:
+            base = subtotal + serviceChargeTotal
+        }
+        return (taxRate.fraction * base).roundedHalfUpValue
+    }
+
+    /// Subtotal + tax + service — the printed receipt's bottom line.
+    public var grandTotal: Int {
+        subtotal + taxTotal + serviceChargeTotal
+    }
 }

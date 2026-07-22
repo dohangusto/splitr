@@ -19,82 +19,43 @@ protocol ReceiptRecognizing: Sendable {
 struct VisionReceiptRecognizer: ReceiptRecognizing {
 
     func recognize(_ image: CGImage) async throws -> RecognizedReceipt {
-        var request = RecognizeDocumentsRequest()
-        // Correction "fixes" prices and Indonesian menu names into English
-        // words — the two things we need exact. Never enable it.
-        request.textRecognitionOptions.useLanguageCorrection = false
-        request.textRecognitionOptions.automaticallyDetectLanguage = false
-        request.textRecognitionOptions.recognitionLanguages = [
-            Locale.Language(identifier: "id-ID"),
-            Locale.Language(identifier: "en-US"),
-        ]
-        // Receipt type is small relative to the frame; default is too coarse.
-        request.textRecognitionOptions.minimumTextHeightFraction = 0.005
-        request.textRecognitionOptions.customWords = [
-            "Subtotal", "Total", "PB1", "Pajak", "Ppn", "Service", "Svc",
-            "Tunai", "Kembali", "Kembalian", "Diskon", "Qty", "Bungkus",
-            "Dine In", "Take Away",
-        ]
-
-        let observations = try await request.perform(on: image)
-        guard let document = observations.first?.document else {
+        let requestHandler = VNImageRequestHandler(cgImage: image, options: [:])
+        let request = VNRecognizeTextRequest()
+        request.recognitionLanguages = ["id-ID", "en-US"]
+        request.usesLanguageCorrection = false
+        request.recognitionLevel = .accurate
+        
+        try await Task.detached {
+            try requestHandler.perform([request])
+        }.value
+        
+        guard let observations = request.results else {
             return RecognizedReceipt(rows: [])
         }
-
-        // Vision may still split one visual receipt row (name left, price
-        // right) into separate line observations; assembleLines re-joins
-        // them by geometry before parsing.
-        let lines = RecognizedReceipt.assembleLines(
-            document.text.lines.compactMap(Self.recognizedText(from:))
-        )
-        let tables = document.tables.map { table in
-            RecognizedTable(
-                rows: table.rows.map { row in
-                    row.compactMap { cell in
-                        let text = cell.content.text
-                        let transcript = text.transcript
-                            .trimmingCharacters(in: .whitespacesAndNewlines)
-                        guard !transcript.isEmpty else { return nil }
-                        return SplitBillCore.RecognizedText(
-                            text: transcript,
-                            box: Self.rect(from: text.boundingRegion),
-                            confidence: text.lines.map { Double($0.confidence) }.min()
-                        )
-                    }
-                },
-                region: Self.rect(from: table.boundingRegion)
+        
+        var fragments: [SplitBillCore.RecognizedText] = []
+        for observation in observations {
+            guard let candidate = observation.topCandidates(1).first else { continue }
+            let text = candidate.string.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { continue }
+            
+            // Convert bounding box from Vision's bottom-left origin to top-left origin:
+            let boundingBox = observation.boundingBox
+            let box = SplitBillCore.NormalizedRect(
+                x: Double(boundingBox.origin.x),
+                y: Double(1 - boundingBox.origin.y - boundingBox.size.height),
+                width: Double(boundingBox.size.width),
+                height: Double(boundingBox.size.height)
             )
+            
+            fragments.append(SplitBillCore.RecognizedText(
+                text: text,
+                box: box,
+                confidence: Double(observation.confidence)
+            ))
         }
-        return RecognizedReceipt(lines: lines, tables: tables)
-    }
-
-    private static func recognizedText(
-        from observation: RecognizedTextObservation
-    ) -> SplitBillCore.RecognizedText? {
-        let transcript = observation.transcript
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !transcript.isEmpty else { return nil }
-        return SplitBillCore.RecognizedText(
-            text: transcript,
-            box: rect(from: observation.boundingRegion),
-            confidence: Double(observation.confidence)
-        )
-    }
-
-    /// Vision regions are normalized polygons with a bottom-left origin;
-    /// Core geometry is a top-left-origin `NormalizedRect`.
-    private static func rect(from region: NormalizedRegion) -> SplitBillCore.NormalizedRect? {
-        let points = region.normalizedPoints
-        guard !points.isEmpty else { return nil }
-        let xs = points.map { Double($0.x) }
-        let ys = points.map { Double($0.y) }
-        let minX = xs.min()!, maxX = xs.max()!
-        let minY = ys.min()!, maxY = ys.max()!
-        return SplitBillCore.NormalizedRect(
-            x: minX,
-            y: 1 - maxY, // flip to top-left origin
-            width: maxX - minX,
-            height: maxY - minY
-        )
+        
+        let lines = RecognizedReceipt.assembleLines(fragments)
+        return RecognizedReceipt(rows: lines.map { SplitBillCore.ReceiptRow.line($0) })
     }
 }
