@@ -67,7 +67,10 @@ struct HomePageView: View {
         }
         .onChange(of: showScanFlow) { oldValue, newValue in
             if !newValue, let roomID = activeScanRoomID {
-                if let room = store.room(withID: roomID), !room.bills.isEmpty {
+                // Creating a room always lands the host in that room's detail —
+                // never back on Home — even if they skipped or cancelled the
+                // scan. (Bills can still be added from the detail surface.)
+                if store.room(withID: roomID) != nil {
                     roomsPath.append(roomID)
                 }
                 activeScanRoomID = nil

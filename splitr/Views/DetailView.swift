@@ -252,7 +252,10 @@ struct DetailView: View {
             EmptyView()
         case .claiming:
             destinationCard("Items & Claims", systemImage: "checklist") {
-                ClaimingView(store: store, roomID: roomID)
+                // The host claims their own items through the same surface a
+                // member uses — MemberClaim is role-aware (host force-assign
+                // stays available inside it), so there's one claiming view.
+                MemberClaim(store: store, roomID: roomID)
             }
         case .settling:
             destinationCard("Settlement", systemImage: "creditcard") {
