@@ -19,7 +19,7 @@ struct TransactionRow: View {
                     .frame(width: 44, height: 44)
                 
                 Image(systemName: "receipt.fill")
-                    .font(.system(size: 18))
+                    .font(.system(.headline))
                     .foregroundColor(Color("SecondaryBlue"))
             }
             .padding(.leading, 20)
@@ -29,7 +29,7 @@ struct TransactionRow: View {
                 Text(roomName)
                     .font(.subheadline)
                     .bold()
-                    .foregroundColor(.black)
+                    .foregroundStyle(.primary)
                     .multilineTextAlignment(.leading)
                 
                 Text("\(membersCount) members, \(billsCount) bills")
@@ -42,7 +42,7 @@ struct TransactionRow: View {
             // Action Capsule
             HStack(spacing: 4) {
                 Image(systemName: "hand.tap.fill")
-                    .font(.system(size: 12))
+                    .font(.system(.caption))
                 Text(actionLabel)
                     .font(.caption)
                     .bold()
@@ -55,7 +55,7 @@ struct TransactionRow: View {
             
             // Chevron
             Image(systemName: "chevron.right")
-                .font(.system(size: 12, weight: .regular))
+                .font(.system(.caption, weight: .regular))
                 .foregroundColor(.secondary.opacity(0.5))
                 .padding(.trailing, 20)
         }

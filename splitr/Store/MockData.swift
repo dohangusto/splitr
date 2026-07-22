@@ -12,20 +12,20 @@ enum MockData {
     // MARK: - Open: fresh room, no bills yet (empty-state showcase)
 
     private static func openRoom() -> Room {
-        let host = Member(displayName: "Hano", avatarEmoji: "🧑‍🍳", isHost: true)
+        let host = Member(displayName: "Hano", avatarEmoji: "Avatar1", isHost: true)
         var room = Room(name: "Nongkrong Jumat", host: host)
-        try! room.join(Member(displayName: "Dita", avatarEmoji: "🐱"))
-        try! room.join(Member(displayName: "Raka", avatarEmoji: "🦖"))
+        try! room.join(Member(displayName: "Dita", avatarEmoji: "Avatar2"))
+        try! room.join(Member(displayName: "Raka", avatarEmoji: "Avatar3"))
         return room
     }
 
     // MARK: - Claiming: shared items, a force-assigned item, unclaimed leftovers
 
     private static func claimingRoom() -> Room {
-        let host = Member(displayName: "Hano", avatarEmoji: "🧑‍🍳", isHost: true)
-        let dita = Member(displayName: "Dita", avatarEmoji: "🐱")
-        let raka = Member(displayName: "Raka", avatarEmoji: "🦖")
-        let sinta = Member(displayName: "Sinta", avatarEmoji: "🌺")
+        let host = Member(displayName: "Hano", avatarEmoji: "Avatar1", isHost: true)
+        let dita = Member(displayName: "Dita", avatarEmoji: "Avatar2")
+        let raka = Member(displayName: "Raka", avatarEmoji: "Avatar3")
+        let sinta = Member(displayName: "Sinta", avatarEmoji: "Avatar4")
         var room = Room(name: "Makan Malam Tim", host: host)
         try! room.join(dita)
         try! room.join(raka)
@@ -40,8 +40,9 @@ enum MockData {
         let esTeh = BillItem(name: "Es Teh Manis", unitPrice: 10_000)
         let tekko = Bill(
             merchantName: "Warung Tekko",
-            taxRate: .percent(10),
-            serviceChargeRate: .percent(5),
+            tax: 18_000,
+            serviceCharge: 9_000,
+            discount: 5_000,
             items: [nasi, sate1, sate2, kentang, gurame, esTeh]
         )
         try! room.addBill(tekko, by: host.id)
@@ -49,7 +50,7 @@ enum MockData {
         // Second bill with no claims at all (empty-claims showcase).
         let kopi = Bill(
             merchantName: "Kopi Kenangan",
-            taxRate: .percent(10),
+            tax: 4_000,
             items: [
                 BillItem(name: "Kopi Kenangan Mantan", unitPrice: 22_000),
                 BillItem(name: "Americano", unitPrice: 18_000),
@@ -74,9 +75,9 @@ enum MockData {
     // MARK: - Settling: everything claimed, payments in progress
 
     private static func settlingRoom() -> Room {
-        let host = Member(displayName: "Hano", avatarEmoji: "🧑‍🍳", isHost: true)
-        let dita = Member(displayName: "Dita", avatarEmoji: "🐱")
-        let raka = Member(displayName: "Raka", avatarEmoji: "🦖")
+        let host = Member(displayName: "Hano", avatarEmoji: "Avatar1", isHost: true)
+        let dita = Member(displayName: "Dita", avatarEmoji: "Avatar2")
+        let raka = Member(displayName: "Raka", avatarEmoji: "Avatar3")
         var room = Room(name: "Bakmi GM Siang", host: host)
         try! room.join(dita)
         try! room.join(raka)
@@ -87,8 +88,8 @@ enum MockData {
         let esJeruk = BillItem(name: "Es Jeruk", unitPrice: 12_000)
         let bill = Bill(
             merchantName: "Bakmi GM Grand Indonesia",
-            taxRate: .percent(10),
-            serviceChargeRate: .percent(5),
+            tax: 15_000,
+            serviceCharge: 7_500,
             items: [bakmi1, bakmi2, pangsit, esJeruk]
         )
         try! room.addBill(bill, by: host.id)
@@ -105,8 +106,8 @@ enum MockData {
     // MARK: - Closed: fully settled history entry
 
     private static func closedRoom() -> Room {
-        let host = Member(displayName: "Hano", avatarEmoji: "🧑‍🍳", isHost: true)
-        let dita = Member(displayName: "Dita", avatarEmoji: "🐱")
+        let host = Member(displayName: "Hano", avatarEmoji: "Avatar1", isHost: true)
+        let dita = Member(displayName: "Dita", avatarEmoji: "Avatar2")
         var room = Room(name: "Farewell Mbak Ayu", host: host)
         try! room.join(dita)
 
@@ -114,8 +115,8 @@ enum MockData {
         let ocha = BillItem(name: "Ocha", unitPrice: 8_000)
         let bill = Bill(
             merchantName: "Sushi Tei Senayan City",
-            taxRate: .percent(10),
-            serviceChargeRate: .percent(8),
+            tax: 12_000,
+            serviceCharge: 9_600,
             items: [salmon, ocha]
         )
         try! room.addBill(bill, by: host.id)

@@ -101,9 +101,9 @@ public enum RecordMapper {
         )
         record[RecordSchema.BillType.merchantName] = bill.merchantName
         record[RecordSchema.BillType.photoReference] = bill.photoReference
-        record[RecordSchema.BillType.taxRateBasisPoints] = bill.taxRate.basisPoints
-        record[RecordSchema.BillType.serviceRateBasisPoints] = bill.serviceChargeRate.basisPoints
-        record[RecordSchema.BillType.taxBasis] = bill.taxBasis.rawValue
+        record[RecordSchema.BillType.tax] = bill.tax
+        record[RecordSchema.BillType.serviceCharge] = bill.serviceCharge
+        record[RecordSchema.BillType.discount] = bill.discount
         record[RecordSchema.BillType.createdAt] = bill.createdAt
         record[RecordSchema.BillType.sortIndex] = sortIndex
         record[RecordSchema.BillType.roomRef] = roomRef
@@ -211,9 +211,9 @@ public enum RecordMapper {
             id: try uuid(fromRecordName: record.recordID.recordName),
             merchantName: try string(record, RecordSchema.BillType.merchantName),
             photoReference: record[RecordSchema.BillType.photoReference] as? String,
-            taxRate: Rate(basisPoints: intValue(record, RecordSchema.BillType.taxRateBasisPoints)),
-            serviceChargeRate: Rate(basisPoints: intValue(record, RecordSchema.BillType.serviceRateBasisPoints)),
-            taxBasis: try rawValue(TaxBasis.self, record, RecordSchema.BillType.taxBasis),
+            tax: intValue(record, RecordSchema.BillType.tax),
+            serviceCharge: intValue(record, RecordSchema.BillType.serviceCharge),
+            discount: intValue(record, RecordSchema.BillType.discount),
             items: [],
             createdAt: try date(record, RecordSchema.BillType.createdAt)
         )

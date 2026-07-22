@@ -91,9 +91,9 @@ import SplitBillCore
         let claimerID = UUID()
         let bill = Bill(
             merchantName: "Warung Nasi",
-            taxRate: .percent(10),
-            serviceChargeRate: .percent(5),
-            taxBasis: .subtotalPlusService,
+            tax: 3_800,
+            serviceCharge: 1_900,
+            discount: 500,
             items: [
                 BillItem(name: "Teh", unitPrice: 8_000),
                 BillItem(
@@ -112,14 +112,14 @@ import SplitBillCore
         let back = try throughJSON(snapshot)
 
         #expect(back == snapshot)
-        #expect(back.taxRate == .percent(10))
-        #expect(back.serviceChargeRate == .percent(5))
-        #expect(back.taxBasis == .subtotalPlusService)
+        // Amounts survive exactly (Int rupiah), so the clip's local settlement
+        // matches the host's.
+        #expect(back.tax == 3_800)
+        #expect(back.serviceCharge == 1_900)
+        #expect(back.discount == 500)
         #expect(back.roomState == .claiming)
         #expect(back.items.count == 2)
         #expect(back.participants.count == 2)
-        // Rates survive exactly, so the clip's local settlement matches the host's.
-        #expect(back.taxRate.basisPoints == 1_000)
     }
 
     @Test func invalidParticipantIDFailsLoudly() throws {

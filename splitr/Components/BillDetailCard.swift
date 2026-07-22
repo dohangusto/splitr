@@ -81,7 +81,6 @@ struct BillDetailCard: View {
 
 
             // MARK: - Bill Summary
-            // No "Diskon" row: discount is not a Core concept (yet).
 
             VStack(spacing: 24) {
 
@@ -89,7 +88,11 @@ struct BillDetailCard: View {
 
                 SummaryRow(title: "Servis", value: bill.serviceChargeTotal.rupiah)
 
-                SummaryRow(title: "Subtotal", value: bill.grandTotal.rupiah)
+                if bill.discountTotal > 0 {
+                    SummaryRow(title: "Diskon", value: "-" + bill.discountTotal.rupiah)
+                }
+
+                SummaryRow(title: "Total", value: bill.grandTotal.rupiah)
             }
 
 
@@ -103,15 +106,15 @@ struct BillDetailCard: View {
                     HStack(spacing: 12) {
 
                         Image(systemName: "pencil")
-                            .font(.system(size: 20))
+                            .font(.system(.title3))
 
                         Text("Edit details")
                             .font(.headline)
                             .foregroundStyle(.primary)
                     }
                     .frame(maxWidth: .infinity)
-                    .frame(height: 56)
-                    .background(Color.white)
+                    .frame(minHeight: 56)
+                    .background(Color(.secondarySystemGroupedBackground))
                     .overlay {
                         RoundedRectangle(
                             cornerRadius: 28,
@@ -129,7 +132,7 @@ struct BillDetailCard: View {
             maxWidth: .infinity,
             alignment: .leading
         )
-        .background(Color.white)
+        .background(Color(.secondarySystemGroupedBackground))
         .clipShape(
             RoundedRectangle(
                 cornerRadius: 24,
@@ -203,11 +206,7 @@ private struct SummaryRow: View {
 
     ZStack {
 
-        Color(
-            red: 237/255,
-            green: 242/255,
-            blue: 255/255
-        )
+        Color("PrimaryBackground")
         .ignoresSafeArea()
 
         ScrollView {

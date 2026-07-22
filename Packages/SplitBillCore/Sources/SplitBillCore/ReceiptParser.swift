@@ -9,13 +9,12 @@ public struct ParsedReceipt: Sendable, Hashable {
     /// One draft per claimable unit — quantity is already exploded
     /// (a "2x Sate" line yields two drafts), matching `BillItem` granularity.
     public var items: [DraftItem] = []
-    /// Detected PB1 percentage (e.g. 10). Unconfirmed until reviewed.
-    public var taxPercent: Int?
-    /// Detected service charge percentage (e.g. 5). Unconfirmed until reviewed.
-    public var servicePercent: Int?
-    /// Only set when the amounts prove which base the tax was computed on;
-    /// nil when there is no service charge to disambiguate.
-    public var taxBasis: TaxBasis?
+    /// Detected PB1 tax amount, in whole rupiah. Unconfirmed until reviewed.
+    public var taxAmount: Int?
+    /// Detected service charge amount, in whole rupiah. Unconfirmed until reviewed.
+    public var serviceAmount: Int?
+    /// Detected discount amount, in whole rupiah. Unconfirmed until reviewed.
+    public var discountAmount: Int?
     /// The receipt's printed subtotal, when found (verification aid).
     public var printedSubtotal: Int?
     /// Content lines the parser could not turn into items — surfaced to the
@@ -67,6 +66,7 @@ public enum ReceiptParser {
         var result = ParsedReceipt()
         var taxAmount: Int?
         var serviceAmount: Int?
+        var discountAmount: Int?
         var sawItem = false
         var sawTotal = false
 
@@ -98,16 +98,20 @@ public enum ReceiptParser {
             }
             if contains(lowered, any: Self.taxKeywords) {
                 taxAmount = trailingMoney(in: line)?.value ?? taxAmount
-                result.taxPercent = percent(in: line) ?? result.taxPercent
                 continue
             }
             if contains(lowered, any: Self.serviceKeywords) {
                 serviceAmount = trailingMoney(in: line)?.value ?? serviceAmount
-                result.servicePercent = percent(in: line) ?? result.servicePercent
                 continue
             }
             if contains(lowered, any: Self.discountKeywords) {
-                result.unparsedLines.append(line) // never silently drop money off the bill
+                // A discount reads as a negative or positive money line; store
+                // its magnitude. If no amount parses, surface it for manual entry.
+                if let money = trailingMoney(in: line)?.value {
+                    discountAmount = abs(money)
+                } else {
+                    result.unparsedLines.append(line)
+                }
                 continue
             }
             if contains(lowered, any: Self.totalKeywords) {
@@ -175,11 +179,11 @@ public enum ReceiptParser {
         }
         flushPending()
 
-        resolveRates(
-            into: &result,
-            taxAmount: taxAmount,
-            serviceAmount: serviceAmount
-        )
+        // Tax, service, and discount ride as the whole-rupiah amounts printed
+        // on the receipt — no percentage inference (the bill stores amounts).
+        result.taxAmount = taxAmount
+        result.serviceAmount = serviceAmount
+        result.discountAmount = discountAmount
         return result
     }
 
@@ -445,60 +449,6 @@ public enum ReceiptParser {
         return Int(match.1)
     }
 
-    // MARK: - Rate & basis resolution
-
-    /// Fills in percentages from amounts when labels lacked them, and works
-    /// out the tax basis by testing which base reproduces the printed tax.
-    private static func resolveRates(
-        into result: inout ParsedReceipt,
-        taxAmount: Int?,
-        serviceAmount: Int?
-    ) {
-        let subtotal = result.printedSubtotal
-            ?? (result.items.isEmpty ? nil : result.items.reduce(0) { $0 + ($1.price ?? 0) * $1.qty })
-
-        if result.servicePercent == nil,
-           let subtotal, subtotal > 0, let serviceAmount,
-           let p = matchingPercent(amount: serviceAmount, base: subtotal) {
-            result.servicePercent = p
-        }
-
-        guard let subtotal, subtotal > 0, let taxAmount else { return }
-        let serviceBase = serviceAmount.map { subtotal + $0 }
-
-        if let p = result.taxPercent {
-            // Label gave the rate; amounts decide the base.
-            if let serviceBase, serviceAmount ?? 0 > 0, matches(amount: taxAmount, base: serviceBase, percent: p) {
-                result.taxBasis = .subtotalPlusService
-            } else if matches(amount: taxAmount, base: subtotal, percent: p), serviceAmount ?? 0 > 0 {
-                result.taxBasis = .subtotal
-            }
-            // No service charge → the two bases coincide; leave basis nil.
-        } else {
-            // No labeled rate: try subtotal+service first (the common format).
-            if let serviceBase, serviceAmount ?? 0 > 0,
-               let p = matchingPercent(amount: taxAmount, base: serviceBase) {
-                result.taxPercent = p
-                result.taxBasis = .subtotalPlusService
-            } else if let p = matchingPercent(amount: taxAmount, base: subtotal) {
-                result.taxPercent = p
-                result.taxBasis = (serviceAmount ?? 0) > 0 ? .subtotal : nil
-            }
-        }
-    }
-
-    /// The whole-percent rate that reproduces `amount` from `base` within
-    /// rounding tolerance, if one exists (1...25%).
-    private static func matchingPercent(amount: Int, base: Int) -> Int? {
-        guard base > 0, amount > 0 else { return nil }
-        let p = Int((Double(amount) * 100 / Double(base)).rounded())
-        guard (1...25).contains(p), matches(amount: amount, base: base, percent: p) else { return nil }
-        return p
-    }
-
-    private static func matches(amount: Int, base: Int, percent: Int) -> Bool {
-        abs(base * percent / 100 - amount) <= 2
-    }
 
     // MARK: - Keywords
 

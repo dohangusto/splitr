@@ -159,6 +159,9 @@ struct SettlementView: View {
         LabeledContent("Items") { Text(share.subtotal.rupiah) }
         LabeledContent("Tax (PB1)") { Text(share.taxShare.rupiah) }
         LabeledContent("Service") { Text(share.serviceShare.rupiah) }
+        if share.discountShare > 0 {
+            LabeledContent("Discount") { Text("-" + share.discountShare.rupiah) }
+        }
     }
 
     @ViewBuilder
@@ -217,6 +220,9 @@ struct SettlementView: View {
             LabeledContent("Subtotal") { Text(settlement.billSubtotal.rupiah) }
             LabeledContent("Tax (PB1)") { Text(settlement.taxTotal.rupiah) }
             LabeledContent("Service") { Text(settlement.serviceTotal.rupiah) }
+            if settlement.discountTotal > 0 {
+                LabeledContent("Discount") { Text("-" + settlement.discountTotal.rupiah) }
+            }
             LabeledContent {
                 Text(settlement.grandTotal.rupiah).bold()
             } label: {

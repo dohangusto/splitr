@@ -9,8 +9,8 @@ import SplitBillCore
 ///
 /// Invariants baked into these shapes:
 /// - Money is `Int` rupiah on the wire, everywhere. No floating point.
-/// - Rates ride as Core's `Rate` (exact `Int` basis points) so the clip can
-///   run `SettlementCalculator` locally with no precision loss.
+/// - Tax, service charge, and discount ride as exact `Int` rupiah amounts so
+///   the clip can run `SettlementCalculator` locally with no precision loss.
 /// - A `participantId` is a temporary, relay-scoped string. It is *not* a
 ///   CloudKit `Member` id: the host mints the real `Member` (and its UUID)
 ///   when it drains a participant. The relay is never an identity authority.
@@ -23,9 +23,12 @@ import SplitBillCore
 public struct SnapshotDTO: Codable, Sendable, Hashable {
     public let sessionId: String
     public let merchantName: String
-    public let taxRate: Rate
-    public let serviceChargeRate: Rate
-    public let taxBasis: TaxBasis
+    /// PB1 tax, whole rupiah.
+    public let tax: Int
+    /// Service charge, whole rupiah.
+    public let serviceCharge: Int
+    /// Discount / promo credit, whole rupiah.
+    public let discount: Int
     public let items: [ItemDTO]
     public let participants: [ParticipantDTO]
     public let roomState: RoomState
@@ -33,18 +36,18 @@ public struct SnapshotDTO: Codable, Sendable, Hashable {
     public init(
         sessionId: String,
         merchantName: String,
-        taxRate: Rate,
-        serviceChargeRate: Rate,
-        taxBasis: TaxBasis,
+        tax: Int,
+        serviceCharge: Int,
+        discount: Int,
         items: [ItemDTO],
         participants: [ParticipantDTO],
         roomState: RoomState
     ) {
         self.sessionId = sessionId
         self.merchantName = merchantName
-        self.taxRate = taxRate
-        self.serviceChargeRate = serviceChargeRate
-        self.taxBasis = taxBasis
+        self.tax = tax
+        self.serviceCharge = serviceCharge
+        self.discount = discount
         self.items = items
         self.participants = participants
         self.roomState = roomState

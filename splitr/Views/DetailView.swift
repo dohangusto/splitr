@@ -24,10 +24,22 @@ struct DetailView: View {
     @State private var previewPhoto: PreviewPhoto?
     @State private var showAdvanceConfirm = false
     @State private var showRollbackConfirm = false
-    @State private var memberToKick: Member?
     @State private var showDeleteConfirm = false
+    /// Local buffer for the editable room name (committed on submit/focus loss).
+    @State private var draftName = ""
 
     private var room: Room? { store.room(withID: roomID) }
+
+    /// Persists a renamed room, ignoring empty or unchanged input.
+    private func commitRename(_ room: Room) {
+        let trimmed = draftName.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else {
+            draftName = room.name // restore; empty names aren't allowed
+            return
+        }
+        guard trimmed != room.name else { return }
+        store.renameRoom(roomID: roomID, to: trimmed)
+    }
 
     var body: some View {
         if let room {
@@ -41,11 +53,7 @@ struct DetailView: View {
         ZStack {
 
             // MARK: Background
-            Color(
-                red: 237/255,
-                green: 242/255,
-                blue: 255/255
-            )
+            Color("PrimaryBackground")
             .ignoresSafeArea()
 
             // MARK: Content
@@ -58,10 +66,19 @@ struct DetailView: View {
                         manageMenu(room)
                     }
 
-                    // Split Bill Name — display-only until rename lands
-                    // with persistence in milestone 4.
-                    SplitBillNameCard(billName: .constant(room.name))
-                        .disabled(true)
+                    // Split Bill Name — the host can rename the room in place;
+                    // committed on return / focus loss, never per keystroke.
+                    SplitBillNameCard(
+                        billName: $draftName,
+                        isEditable: room.state != .closed,
+                        onCommit: { commitRename(room) }
+                    )
+                    .onAppear { if draftName.isEmpty { draftName = room.name } }
+                    .onChange(of: room.name) { _, newValue in
+                        // Keep the field in sync with remote changes when the
+                        // host isn't mid-edit (they own renames, so this is rare).
+                        if draftName != newValue { draftName = newValue }
+                    }
 
                     // People
                     PeopleCard(people: room.members.map(\.avatarEmoji)) {
@@ -161,16 +178,6 @@ struct DetailView: View {
         } message: {
             Text("Members will be able to change their claims again. Current settlement amounts will be recomputed.")
         }
-        .alert(item: $memberToKick) { member in
-            Alert(
-                title: Text("Remove \(member.displayName)?"),
-                message: Text("All items they claimed — including their share of split items — will return to unclaimed."),
-                primaryButton: .destructive(Text("Remove")) {
-                    store.kick(memberID: member.id, roomID: roomID)
-                },
-                secondaryButton: .cancel()
-            )
-        }
         .alert("Delete this room?", isPresented: $showDeleteConfirm) {
             Button("Delete Room", role: .destructive) { deleteRoom() }
             Button("Cancel", role: .cancel) {}
@@ -192,18 +199,8 @@ struct DetailView: View {
                     Label("Reopen Claiming", systemImage: "arrow.uturn.backward.circle")
                 }
             }
-            if room.state != .closed {
-                let kickable = room.members.filter { !$0.isHost }
-                if !kickable.isEmpty {
-                    Menu("Remove Member…") {
-                        ForEach(kickable) { member in
-                            Button("\(member.avatarEmoji) \(member.displayName)") {
-                                memberToKick = member
-                            }
-                        }
-                    }
-                }
-            }
+            // Removing a member now lives on each person's row inside the
+            // People list sheet, next to who it acts on — not up here.
             Button(role: .destructive) {
                 showDeleteConfirm = true
             } label: {
@@ -211,10 +208,10 @@ struct DetailView: View {
             }
         } label: {
             Image(systemName: "ellipsis")
-                .font(.system(size: 16, weight: .medium))
-                .foregroundColor(.black)
+                .font(.system(.callout, weight: .medium))
+                .foregroundStyle(.primary)
                 .frame(width: 44, height: 44)
-                .background(Color.white)
+                .background(Color(.secondarySystemGroupedBackground))
                 .clipShape(Circle())
                 .shadow(color: .black.opacity(0.08), radius: 6, y: 2)
         }
@@ -284,7 +281,7 @@ struct DetailView: View {
                     .foregroundStyle(.tertiary)
             }
             .padding(20)
-            .background(Color.white)
+            .background(Color(.secondarySystemGroupedBackground))
             .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         }
         .buttonStyle(.plain)
@@ -296,34 +293,78 @@ struct DetailView: View {
     private func pinnedAction(_ room: Room) -> some View {
         if room.state != .closed {
             VStack {
-                Button {
-                    showAdvanceConfirm = true
-                } label: {
-                    Text(room.state.advanceLabel)
-                        .font(.headline)
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 56)
-                        .background(
-                            Color(
-                                red: 82/255,
-                                green: 126/255,
-                                blue: 255/255
+                // Settling can't complete while items have no owner. Rather
+                // than a dead, disabled "Close Room" button, say what's wrong
+                // and offer the one action that fixes it — reopen claiming.
+                if room.state == .settling, unclaimedCount(room) > 0 {
+                    reopenClaimingPrompt(room)
+                } else {
+                    Button {
+                        showAdvanceConfirm = true
+                    } label: {
+                        Text(room.state.advanceLabel)
+                            .font(.headline)
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(minHeight: 56)
+                            .background(
+                                Color("SplitAirBlue")
                             )
-                        )
-                        .clipShape(
-                            Capsule()
-                        )
-                        .opacity(advanceDisabled(room) ? 0.4 : 1)
+                            .clipShape(
+                                Capsule()
+                            )
+                            .opacity(advanceDisabled(room) ? 0.4 : 1)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(advanceDisabled(room))
                 }
-                .buttonStyle(.plain)
-                .disabled(advanceDisabled(room))
             }
             .padding(.horizontal, 20)
             .padding(.top, 20)
             .padding(.bottom, 12)
-            .background(Color.white)
+            .background(Color(.secondarySystemGroupedBackground))
         }
+    }
+
+    /// Number of items in the room with no owner — what blocks settlement.
+    private func unclaimedCount(_ room: Room) -> Int {
+        room.bills.flatMap(\.items).filter { $0.claimState == .unclaimed }.count
+    }
+
+    /// Shown in `.settling` when items are still unclaimed: names the problem
+    /// and makes reopening claiming the explicit, intentional next step.
+    @ViewBuilder
+    private func reopenClaimingPrompt(_ room: Room) -> some View {
+        let count = unclaimedCount(room)
+        VStack(spacing: 12) {
+            Label(
+                "\(count) item\(count == 1 ? "" : "s") still have no owner",
+                systemImage: "exclamationmark.triangle.fill"
+            )
+            .font(.subheadline.weight(.medium))
+            .foregroundStyle(.orange)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text("Settlement can't be finalized until every item is claimed or assigned. Reopen claiming to sort them out.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button {
+                showRollbackConfirm = true
+            } label: {
+                Text("Reopen Claiming")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 56)
+                    .background(Color.orange)
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(16)
+        .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 
     private func advanceDisabled(_ room: Room) -> Bool {
@@ -377,6 +418,7 @@ private struct AddBillOptionsSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                        .tint(.primary)
                 }
             }
         }
@@ -403,11 +445,15 @@ private struct AddBillOptionsSheet: View {
             } icon: {
                 Image(systemName: systemImage)
                     .font(.title3)
-                    .foregroundStyle(Color("SplitAirBlue"))
-                    .frame(width: 32)
+                    .foregroundStyle(.primary)
+                    .frame(width: 40, height: 40)
+                    .background(Color(.systemGray6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
             .padding(.vertical, 4)
         }
+        // Plain style so the row keeps its own black/grey text instead of the
+        // list's accent tint (which rendered the labels blue).
+        .buttonStyle(.plain)
     }
 }
 

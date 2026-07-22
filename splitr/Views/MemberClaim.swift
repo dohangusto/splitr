@@ -52,7 +52,7 @@ struct CheckboxButton: View {
                 .overlay {
                     if isChecked {
                         Image(systemName: "checkmark")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.system(.caption, weight: .bold))
                             .foregroundColor(.white)
                     }
                 }
@@ -177,7 +177,7 @@ struct MemberClaim: View {
                 ContentUnavailableView("Room not found", systemImage: "questionmark.circle")
             }
         }
-        .background(Color(red: 0.90, green: 0.92, blue: 0.99).ignoresSafeArea())
+        .background(Color("PrimaryBackground").ignoresSafeArea())
         .navigationBarBackButtonHidden(true)
         .navigationDestination(isPresented: $navigateToPaymentStatus) {
             PaymentStatusView(store: store, roomID: roomID)
@@ -205,12 +205,12 @@ struct MemberClaim: View {
                             .padding(.horizontal, 24)
                             .padding(.top, 10)
                             .padding(.bottom, 8)
-                            .background(Color(red: 0.90, green: 0.92, blue: 0.99).ignoresSafeArea(edges: .top))
+                            .background(Color("PrimaryBackground").ignoresSafeArea(edges: .top))
                         
                         LinearGradient(
                             gradient: Gradient(colors: [
-                                Color(red: 0.90, green: 0.92, blue: 0.99),
-                                Color(red: 0.90, green: 0.92, blue: 0.99).opacity(0)
+                                Color("PrimaryBackground"),
+                                Color("PrimaryBackground").opacity(0)
                             ]),
                             startPoint: .top,
                             endPoint: .bottom
@@ -229,7 +229,7 @@ struct MemberClaim: View {
     private var waitingState: some View {
         VStack(spacing: 16) {
             Image(systemName: "hourglass")
-                .font(.system(size: 44))
+                .font(.system(.largeTitle))
                 .foregroundStyle(.secondary)
             Text("The host is still preparing the bill")
                 .font(.headline)
@@ -310,7 +310,7 @@ struct MemberClaim: View {
                 .padding()
             }
         }
-        .background(Color.white)
+        .background(Color(.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .shadow(color: .black.opacity(0.05), radius: 8, y: 2)
     }
@@ -457,7 +457,7 @@ struct MemberClaim: View {
         .padding(.top, 16)
         .padding(.bottom, 12) // Penyeimbang padding agar menyatu dengan safe area bottom
         .background(
-            Color.white
+            Color(.systemBackground)
                 .clipShape(RoundedCorner(radius: 24, corners: [.topLeft, .topRight]))
                 .ignoresSafeArea(edges: .bottom)
         )

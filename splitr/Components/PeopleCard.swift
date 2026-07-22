@@ -17,65 +17,64 @@ struct PeopleCard: View {
                 .font(.headline)
                 .foregroundStyle(.secondary)
 
-            HStack(spacing: 16) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
 
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
-
-                        // Members are identified by an emoji avatar (an
-                        // asset name may also appear) — render whichever
-                        // the string resolves to.
-                        ForEach(Array(people.enumerated()), id: \.offset) { _, person in
-                            Group {
-                                if let uiImage = UIImage(named: person) {
-                                    Image(uiImage: uiImage)
-                                        .resizable()
-                                        .scaledToFill()
-                                } else {
-                                    Text(person)
-                                        .font(.system(size: 28))
-                                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                        .background(Color(.systemGray6))
-                                }
+                    // Members are identified by an emoji avatar (an
+                    // asset name may also appear) — render whichever
+                    // the string resolves to.
+                    ForEach(Array(people.enumerated()), id: \.offset) { _, person in
+                        Group {
+                            if let uiImage = UIImage(named: person) {
+                                Image(uiImage: uiImage)
+                                    .resizable()
+                                    .scaledToFill()
+                            } else {
+                                Text(person)
+                                    .font(.system(.title))
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    .background(Color(.systemGray6))
                             }
-                            .frame(width: 54, height: 54)
-                            .clipShape(Circle())
-                            .overlay(
-                                Circle()
-                                    .stroke(Color(.systemGray5), lineWidth: 2)
-                            )
                         }
-                    }
-                }
-
-                Button {
-                    onAddTapped()
-                } label: {
-                    Circle()
-                        .fill(.white)
                         .frame(width: 54, height: 54)
-                        .overlay {
+                        .clipShape(Circle())
+                        .overlay(
                             Circle()
                                 .stroke(Color(.systemGray5), lineWidth: 2)
+                        )
+                    }
 
-                            Image(systemName: "plus")
-                                .font(.system(size: 28, weight: .regular))
-                                .foregroundStyle(.gray)
-                        }
+                    // The "+" trails the newest avatar directly, scrolling
+                    // with the row instead of pinning to the card's edge.
+                    Button {
+                        onAddTapped()
+                    } label: {
+                        Circle()
+                            .fill(Color(.secondarySystemGroupedBackground))
+                            .frame(width: 54, height: 54)
+                            .overlay {
+                                Circle()
+                                    .stroke(Color(.systemGray5), lineWidth: 2)
+
+                                Image(systemName: "plus")
+                                    .font(.system(.title, weight: .regular))
+                                    .foregroundStyle(.gray)
+                            }
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white)
+        .background(Color(.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
     }
 }
 
 #Preview {
     ZStack {
-        Color(red: 237/255, green: 242/255, blue: 255/255)
+        Color("PrimaryBackground")
             .ignoresSafeArea()
 
         PeopleCard(

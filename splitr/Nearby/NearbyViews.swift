@@ -123,7 +123,7 @@ struct NearbyHostView: View {
     private func failureActions(_ coordinator: ProximityJoinCoordinator) -> some View {
         VStack(spacing: 12) {
             Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 44))
+                .font(.system(.largeTitle))
                 .foregroundStyle(.orange)
                 .padding(.bottom, 8)
             Button {
@@ -416,6 +416,12 @@ struct NearbyJoinView: View {
     @State private var started = false
     @State private var showLinkEntry = false
 
+    /// A profile is ready to join with once it has a non-empty display name
+    /// (the avatar always defaults). When true, we don't ask for it again.
+    private var profileComplete: Bool {
+        !profile.name.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
     var body: some View {
         Group {
             if let coordinator, started {
@@ -436,12 +442,6 @@ struct NearbyJoinView: View {
                 }
             }
         }
-        .onAppear {
-            let nameTrimmed = profile.name.trimmingCharacters(in: .whitespaces)
-            if !nameTrimmed.isEmpty {
-                start()
-            }
-        }
         .onDisappear { coordinator?.stop() }
     }
 
@@ -450,6 +450,8 @@ struct NearbyJoinView: View {
     private var entryForm: some View {
         NavigationStack {
             Form {
+                // Identity: only ask when it isn't set yet. A returning user
+                // with a saved profile just sees who they're joining as.
                 Section {
                     HStack(spacing: 16) {
                         Image(profile.avatar)
@@ -458,39 +460,56 @@ struct NearbyJoinView: View {
                             .frame(width: 60, height: 60)
                             .clipShape(Circle())
                             .overlay(Circle().stroke(Color(.systemGray5), lineWidth: 1))
-                        
+
                         VStack(alignment: .leading, spacing: 4) {
-                            TextField("Display name", text: $profile.name)
-                                .font(.headline)
-                            Text("Profile Photo")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
+                            if profileComplete {
+                                Text(profile.name)
+                                    .font(.headline)
+                                Text("Joining as this profile")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                TextField("Display name", text: $profile.name)
+                                    .font(.headline)
+                                Text("Profile Photo")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
                     .padding(.vertical, 4)
                 } header: {
                     Text("You")
+                }
+
+                // The two join paths, as separate, clearly-labelled buttons.
+                Section {
+                    Button {
+                        profile.save()
+                        start()
+                    } label: {
+                        Label("Join Nearby", systemImage: "dot.radiowaves.left.and.right")
+                    }
+                    .disabled(!profileComplete)
+
+                    Button {
+                        profile.save()
+                        showLinkEntry = true
+                    } label: {
+                        Label("Join with an Invite Link", systemImage: "link")
+                    }
+                    .disabled(!profileComplete)
+                } header: {
+                    Text("How do you want to join?")
                 } footer: {
-                    Text("Tap Find the Host below, then bring your iPhone close to the host's iPhone to join. If your friend sent a link in Messages, just tap it there — it opens splitr directly.")
+                    Text("Nearby: bring your iPhone close to the host's iPhone. Invite link: paste the link a friend sent you.")
                 }
             }
-            .navigationTitle("Join Nearby")
+            .navigationTitle("Join a Room")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Join with an Invite Link", systemImage: "link") {
-                        showLinkEntry = true
-                    }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Find the Host") {
-                        profile.save()
-                        start()
-                    }
-                    .disabled(profile.name.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
         }
@@ -608,7 +627,7 @@ struct NearbyJoinView: View {
     private func joinFailureActions(_ coordinator: ProximityJoinCoordinator) -> some View {
         VStack(spacing: 12) {
             Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 44))
+                .font(.system(.largeTitle))
                 .foregroundStyle(.orange)
                 .padding(.bottom, 8)
             Button {

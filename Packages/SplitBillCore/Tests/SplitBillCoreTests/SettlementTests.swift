@@ -21,7 +21,7 @@ struct SettlementTests {
     /// Tax total = 18.700, service total = 9.350, grand total = 215.050.
     /// Non-hosts pay floors; host absorbs the remainder (4 rupiah here).
     /// The five golden-receipt items: host 63.333⅓, Bob 90.333⅓, Cara 33.333⅓ exact.
-    private func goldenBill(taxBasis: TaxBasis) -> Bill {
+    private func goldenBill(tax: Int, serviceCharge: Int, discount: Int = 0) -> Bill {
         let nasi = BillItem(name: "Nasi Goreng", unitPrice: 55_000,
                             claimState: .claimed([Claim(itemID: UUID(), memberID: hostID, portion: .one)]))
         let sate = BillItem(name: "Sate", unitPrice: 67_000,
@@ -43,16 +43,17 @@ struct SettlementTests {
                               ]))
         return Bill(
             merchantName: "Warung Tekko",
-            taxRate: .percent(10),
-            serviceChargeRate: .percent(5),
-            taxBasis: taxBasis,
+            tax: tax,
+            serviceCharge: serviceCharge,
+            discount: discount,
             items: [nasi, sate, esTeh, kentang, gurame]
         )
     }
 
-    @Test("Golden receipt (tax on subtotal): exact rupiah for every member")
+    @Test("Golden receipt: proportional tax/service to exact rupiah for every member")
     func goldenReceipt() throws {
-        let bill = goldenBill(taxBasis: .subtotal)
+        // Printed tax 18.700, service 9.350 (was 10% / 5% of the 187.000 subtotal).
+        let bill = goldenBill(tax: 18_700, serviceCharge: 9_350)
 
         let settlement = try SettlementCalculator.settle(
             bill: bill,
@@ -93,9 +94,10 @@ struct SettlementTests {
     /// Same receipt, but PB1 on subtotal + service (the common Indonesian
     /// format and the default): service = 9.350, tax base = 196.350,
     /// tax = 19.635, grand total = 215.985.
-    @Test("Golden receipt (tax on subtotal + service): exact rupiah for every member")
-    func goldenReceiptTaxOnSubtotalPlusService() throws {
-        let bill = goldenBill(taxBasis: .subtotalPlusService)
+    @Test("Golden receipt with a larger tax total: exact rupiah for every member")
+    func goldenReceiptLargerTax() throws {
+        // Printed tax 19.635 (was PB1 on subtotal + service), service 9.350.
+        let bill = goldenBill(tax: 19_635, serviceCharge: 9_350)
 
         let settlement = try SettlementCalculator.settle(
             bill: bill,
@@ -141,7 +143,7 @@ struct SettlementTests {
             claimedItem(price: 90_000, by: bobID),
             claimedItem(price: 30_000, by: caraID),
         ]
-        let bill = Bill(merchantName: "Kafe", taxRate: .percent(10), items: items)
+        let bill = Bill(merchantName: "Kafe", tax: 18_000, items: items)
         let settlement = try SettlementCalculator.settle(
             bill: bill, memberIDs: [hostID, bobID, caraID], hostMemberID: hostID
         )
@@ -158,7 +160,7 @@ struct SettlementTests {
             claimedItem(price: 150_000, by: bobID),
             claimedItem(price: 50_000, by: caraID),
         ]
-        let bill = Bill(merchantName: "Kafe", taxRate: .percent(10), items: items)
+        let bill = Bill(merchantName: "Kafe", tax: 20_000, items: items)
         let settlement = try SettlementCalculator.settle(
             bill: bill, memberIDs: [hostID, bobID, caraID], hostMemberID: hostID
         )
@@ -219,7 +221,7 @@ struct SettlementTests {
 
     @Test("Empty bill settles to all zeroes")
     func emptyBill() throws {
-        let bill = Bill(merchantName: "Warung", taxRate: .percent(10), serviceChargeRate: .percent(5))
+        let bill = Bill(merchantName: "Warung")
         let settlement = try SettlementCalculator.settle(
             bill: bill, memberIDs: [hostID, bobID], hostMemberID: hostID
         )
@@ -233,9 +235,9 @@ struct SettlementTests {
         let alice = Fixtures.member("Alice")
         var room = try Fixtures.openRoom(host: host, members: [alice])
 
-        let dinner = Bill(merchantName: "Warung", taxRate: .percent(10),
+        let dinner = Bill(merchantName: "Warung", tax: 10_000,
                           items: [claimedItem(price: 100_000, by: alice.id)])
-        let dessert = Bill(merchantName: "Kafe", taxRate: .percent(10),
+        let dessert = Bill(merchantName: "Kafe", tax: 5_000,
                            items: [claimedItem(price: 50_000, by: alice.id)])
         try room.addBill(dinner, by: host.id)
         try room.addBill(dessert, by: host.id)
@@ -303,14 +305,13 @@ struct SettlementTests {
 
     @Test("Single claimant owes the exact bill total; nothing to absorb")
     func singleClaimant() throws {
-        // Odd subtotal + 10% tax: totals round at the bill level (half-up,
-        // like the printed receipt), then the sole claimant owes all of it.
-        let bill = Bill(merchantName: "Warung", taxRate: .percent(10),
+        // The sole claimant owes the whole bill — subtotal plus the printed tax.
+        let bill = Bill(merchantName: "Warung", tax: 1_000,
                         items: [claimedItem(price: 10_001, by: bobID)])
         let settlement = try SettlementCalculator.settle(
             bill: bill, memberIDs: [hostID, bobID], hostMemberID: hostID
         )
-        #expect(settlement.taxTotal == 1_000) // half-up of 1.000,1
+        #expect(settlement.taxTotal == 1_000)
         #expect(settlement.settlement(for: bobID)?.totalOwed == 11_001)
         #expect(settlement.settlement(for: hostID)?.totalOwed == 0)
         #expect(settlement.roundingRemainder == 0)
@@ -380,11 +381,13 @@ struct SettlementTests {
             return BillItem(id: itemID, name: "Item", unitPrice: price, claimState: .claimed(claims))
         }
 
+        let subtotal = items.reduce(0) { $0 + $1.unitPrice }
         let bill = Bill(
             merchantName: "Random Warung",
-            taxRate: Rate(basisPoints: Int.random(in: 0...1_500, using: &rng)),
-            serviceChargeRate: Rate(basisPoints: Int.random(in: 0...1_000, using: &rng)),
-            taxBasis: Bool.random(using: &rng) ? .subtotal : .subtotalPlusService,
+            tax: Int.random(in: 0...(subtotal / 5 + 1), using: &rng),
+            serviceCharge: Int.random(in: 0...(subtotal / 10 + 1), using: &rng),
+            // Discount stays within the subtotal so the total never goes negative.
+            discount: Int.random(in: 0...max(subtotal / 4, 1), using: &rng),
             items: items
         )
 
@@ -392,27 +395,61 @@ struct SettlementTests {
             bill: bill, memberIDs: memberIDs, hostMemberID: hostID
         )
 
-        // Grand total is exactly subtotal + tax + service.
+        // Grand total is exactly subtotal + tax + service − discount.
         #expect(settlement.grandTotal
-            == settlement.billSubtotal + settlement.taxTotal + settlement.serviceTotal)
+            == settlement.billSubtotal + settlement.taxTotal + settlement.serviceTotal - settlement.discountTotal)
 
         // Every column reconciles exactly.
         #expect(settlement.memberSettlements.reduce(0) { $0 + $1.subtotal } == settlement.billSubtotal)
         #expect(settlement.memberSettlements.reduce(0) { $0 + $1.taxShare } == settlement.taxTotal)
         #expect(settlement.memberSettlements.reduce(0) { $0 + $1.serviceShare } == settlement.serviceTotal)
+        #expect(settlement.memberSettlements.reduce(0) { $0 + $1.discountShare } == settlement.discountTotal)
         #expect(settlement.memberSettlements.reduce(0) { $0 + $1.totalOwed } == settlement.grandTotal)
 
         // Per-member consistency and sanity.
         for member in settlement.memberSettlements {
-            #expect(member.totalOwed == member.subtotal + member.taxShare + member.serviceShare)
+            #expect(member.totalOwed
+                == member.subtotal + member.taxShare + member.serviceShare - member.discountShare)
             #expect(member.subtotal >= 0)
             #expect(member.taxShare >= 0)
             #expect(member.serviceShare >= 0)
+            // Non-host members get a non-negative credit; the host may take a
+            // negative discount share to absorb their rounded-up credits.
+            if member.memberID != hostID {
+                #expect(member.discountShare >= 0)
+            }
         }
 
-        // The host absorbs at most one rupiah per member per column.
+        // No non-host member overpays their exact share (charges floored,
+        // discount ceiled); the host absorbs every column's remainder.
         #expect(settlement.roundingRemainder >= 0)
-        #expect(settlement.roundingRemainder < 3 * memberCount)
+        #expect(settlement.roundingRemainder < 4 * memberCount)
+    }
+
+    @Test("Discount is allocated proportionally and reconciles exactly")
+    func discountProportional() throws {
+        // Bob claims 3× Cara; the discount credit must split 3:1 too.
+        let items = [
+            claimedItem(price: 150_000, by: bobID),
+            claimedItem(price: 50_000, by: caraID),
+        ]
+        let bill = Bill(merchantName: "Kafe", tax: 20_000, discount: 8_000, items: items)
+        let settlement = try SettlementCalculator.settle(
+            bill: bill, memberIDs: [hostID, bobID, caraID], hostMemberID: hostID
+        )
+        #expect(settlement.discountTotal == 8_000)
+        #expect(settlement.grandTotal == 200_000 + 20_000 - 8_000)
+
+        let bob = try #require(settlement.settlement(for: bobID))
+        let cara = try #require(settlement.settlement(for: caraID))
+        // 8.000 × 150/200 = 6.000 for Bob, 8.000 × 50/200 = 2.000 for Cara.
+        #expect(bob.discountShare == 6_000)
+        #expect(cara.discountShare == 2_000)
+        #expect(bob.totalOwed == 150_000 + 15_000 - 6_000)
+        #expect(cara.totalOwed == 50_000 + 5_000 - 2_000)
+
+        let sum = settlement.memberSettlements.reduce(0) { $0 + $1.totalOwed }
+        #expect(sum == settlement.grandTotal)
     }
 
     // MARK: - Helpers

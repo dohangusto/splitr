@@ -13,6 +13,9 @@ struct HomePageView: View {
     
     @State private var showScanFlow = false
     @State private var activeScanRoomID: UUID?
+    /// Room just created via CreateRoomView, awaiting the scan sheet once the
+    /// naming sheet finishes dismissing (sheet-to-sheet handoff).
+    @State private var pendingScanRoomID: UUID?
     
     @State private var selectedTab: HomeTab = .home
     
@@ -52,8 +55,18 @@ struct HomePageView: View {
         }
         .tabViewStyle(.sidebarAdaptable)
         .tabBarMinimizeBehavior(.onScrollDown)
-        .sheet(isPresented: $showCreateRoom) {
-            CreateRoomView(store: store)
+        .sheet(isPresented: $showCreateRoom, onDismiss: {
+            // Once the room is named, drop the host straight into scanning the
+            // first receipt (the scan flow then lands them in the room detail).
+            if let roomID = pendingScanRoomID {
+                activeScanRoomID = roomID
+                showScanFlow = true
+                pendingScanRoomID = nil
+            }
+        }) {
+            CreateRoomView(store: store) { roomID in
+                pendingScanRoomID = roomID
+            }
         }
         .sheet(isPresented: $showJoinNearby) {
             NearbyJoinView(store: store) { roomID in
@@ -140,8 +153,12 @@ struct HomePageView: View {
                 
                 VStack(alignment: .leading, spacing: 20) {
                     historyHeader
-                    
-                    if closedRooms.isEmpty {
+
+                    if store.isLoadingRooms {
+                        Spacer()
+                        LoadingPlaceholder(message: "Loading your history…")
+                        Spacer()
+                    } else if closedRooms.isEmpty {
                         Spacer()
                         historyEmptyState
                         Spacer()
@@ -178,7 +195,7 @@ struct HomePageView: View {
     private var historyEmptyState: some View {
         VStack(spacing: 12) {
             Image(systemName: "checkmark.circle")
-                .font(.system(size: 44))
+                .font(.system(.largeTitle))
                 .foregroundStyle(.secondary)
 
             Text("No completed transactions yet.")
@@ -192,7 +209,7 @@ struct HomePageView: View {
         Text("History")
             .font(.largeTitle)
             .bold()
-            .foregroundColor(.black)
+            .foregroundStyle(.primary)
             .padding(.horizontal, 24)
     }
 
@@ -213,8 +230,11 @@ struct HomePageView: View {
                 
                 VStack(alignment: .leading, spacing: 20) {
                     searchHeader
-                    
-                    if searchResults.isEmpty {
+
+                    if store.isLoadingRooms {
+                        LoadingPlaceholder(message: "Loading your rooms…")
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else if searchResults.isEmpty {
                         Text("No rooms found.")
                             .font(.headline)
                             .foregroundColor(.secondary)
@@ -248,7 +268,7 @@ struct HomePageView: View {
     private var searchEmptyState: some View {
         VStack(spacing: 12) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 44))
+                .font(.system(.largeTitle))
                 .foregroundStyle(.secondary)
 
             Text("No rooms found.")
@@ -262,7 +282,7 @@ struct HomePageView: View {
         Text("Search")
             .font(.largeTitle)
             .bold()
-            .foregroundColor(.black)
+            .foregroundStyle(.primary)
             .padding(.horizontal, 24)
     }
     
@@ -284,7 +304,7 @@ struct HomePageView: View {
                 billsCount: room.bills.count,
                 actionLabel: actionLabel(for: room)
             )
-            .background(Color.white)
+            .background(Color(.secondarySystemGroupedBackground))
             .cornerRadius(24)
             .shadow(color: Color.black.opacity(0.04), radius: 10, x: 0, y: 5)
         }
@@ -296,7 +316,7 @@ struct HomePageView: View {
             Text("Split Air")
                 .font(.largeTitle)
                 .bold()
-                .foregroundColor(.black)
+                .foregroundStyle(.primary)
             
             Spacer()
             
@@ -343,7 +363,7 @@ struct HomePageView: View {
                 Text("Open Transactions")
                     .font(.headline)
                     .bold()
-                    .foregroundColor(.black)
+                    .foregroundStyle(.primary)
                 
                 Text("Review and complete your unpaid bills.")
                     .font(.subheadline)
@@ -352,7 +372,11 @@ struct HomePageView: View {
             .padding(.horizontal, 20)
             .padding(.top, 20)
             
-            if activeRooms.isEmpty {
+            if store.isLoadingRooms {
+                // The initial iCloud fetch is in flight — show the loading
+                // animation instead of a misleading "no transactions" state.
+                LoadingPlaceholder(message: "Loading your bills…")
+            } else if activeRooms.isEmpty {
                 VStack(spacing: 16) {
                     Image("EmptyTransaction")
                         .resizable()
@@ -384,7 +408,7 @@ struct HomePageView: View {
                 .padding(.bottom, 12)
             }
         }
-        .background(Color.white)
+        .background(Color(.secondarySystemGroupedBackground))
         .cornerRadius(24)
         .shadow(color: Color.black.opacity(0.04), radius: 10, x: 0, y: 5)
         .padding(.horizontal, 24)
@@ -401,24 +425,11 @@ struct HomePageView: View {
     }
 
     private func createRoomTapped() {
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateStyle = .medium
-        dateFormatter.timeStyle = .none
-        let dateString = dateFormatter.string(from: Date())
-        let defaultRoomName = "Bill \(dateString)"
-        
-        let profile = UserProfile.load()
-        let hostName = profile.name.isEmpty ? "Host" : profile.name
-        let hostEmoji = profile.avatar
-        
+        // The host names the room and confirms their identity in
+        // CreateRoomView — no auto-generated "Bill <date>". We only gate the
+        // hosting preflight here so a can't-host account learns before typing.
         guard let cloudStore = AppComposition.cloudStore else {
-            let newRoom = store.createRoom(
-                named: defaultRoomName,
-                hostName: hostName,
-                hostEmoji: hostEmoji
-            )
-            activeScanRoomID = newRoom.id
-            showScanFlow = true
+            showCreateRoom = true
             return
         }
         isCheckingHosting = true
@@ -428,13 +439,7 @@ struct HomePageView: View {
             if let issue {
                 hostingIssue = issue
             } else {
-                let newRoom = store.createRoom(
-                    named: defaultRoomName,
-                    hostName: hostName,
-                    hostEmoji: hostEmoji
-                )
-                activeScanRoomID = newRoom.id
-                showScanFlow = true
+                showCreateRoom = true
             }
         }
     }

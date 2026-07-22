@@ -196,9 +196,9 @@ struct AvatarPicker: View {
                 .overlay(alignment: .bottomTrailing) {
                     if isSelected {
                         Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 18))
+                            .font(.system(.headline))
                             .foregroundStyle(.white, Color.accentColor)
-                            .background(Circle().fill(.white).padding(2))
+                            .background(Circle().fill(Color(.secondarySystemGroupedBackground)).padding(2))
                     }
                 }
         }

@@ -16,11 +16,11 @@ struct ActionCard: View {
             VStack(alignment: .leading, spacing: 0) {
                 ZStack {
                     Circle()
-                        .fill(Color.white)
+                        .fill(Color(.secondarySystemGroupedBackground))
                         .frame(width: 44, height: 44)
                     
                     Image(systemName: iconName)
-                        .font(.system(size: 20, weight: .bold))
+                        .font(.system(.title3, weight: .bold))
                         .foregroundColor(iconTintColor)
                 }
                 .padding(.vertical,16)
@@ -43,7 +43,7 @@ struct ActionCard: View {
                 .padding([.leading, .bottom, .trailing],16)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 175)
+            .frame(minHeight: 175)
             .background(accentColor)
             .cornerRadius(24)
             .shadow(color: accentColor.opacity(0.2), radius: 8, x: 0, y: 4)

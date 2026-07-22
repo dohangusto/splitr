@@ -64,12 +64,35 @@ struct GIFImageView: UIViewRepresentable {
 }
 
 struct LoadingAnimationView: View {
+    var size: CGFloat = 100
+
     var body: some View {
-        GIFImageView(gifName: "loadingAnimation", size: CGSize(width: 100, height: 100))
-            .frame(width: 100, height: 100)
+        GIFImageView(gifName: "loadingAnimation", size: CGSize(width: size, height: size))
+            .frame(width: size, height: size)
+    }
+}
+
+/// Section-level loading placeholder: the looping animation over a short
+/// caption. Use anywhere a section is waiting on data (e.g. the iCloud room
+/// fetch on Home) so it never shows a misleading empty state while loading.
+struct LoadingPlaceholder: View {
+    var message: String = "Loading…"
+    var size: CGFloat = 100
+
+    var body: some View {
+        VStack(spacing: 8) {
+            LoadingAnimationView(size: size)
+            Text(message)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 32)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(message)
     }
 }
 
 #Preview {
-    LoadingAnimationView()
+    LoadingPlaceholder(message: "Loading your bills…")
 }

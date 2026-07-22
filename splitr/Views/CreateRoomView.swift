@@ -4,6 +4,8 @@ import SplitBillCore
 /// "Create Room" sheet: room name + host identity (display name + emoji avatar).
 struct CreateRoomView: View {
     let store: any RoomStoring
+    /// Reports the created room's id so the caller can route on (scan → detail).
+    var onCreated: (UUID) -> Void = { _ in }
 
     @Environment(\.dismiss) private var dismiss
     @State private var roomName = ""
@@ -44,11 +46,12 @@ struct CreateRoomView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Create") {
                         profile.save()
-                        store.createRoom(
+                        let room = store.createRoom(
                             named: roomName.trimmingCharacters(in: .whitespaces),
                             hostName: profile.name,
                             hostEmoji: profile.avatar
                         )
+                        onCreated(room.id)
                         dismiss()
                     }
                     .disabled(roomName.trimmingCharacters(in: .whitespaces).isEmpty

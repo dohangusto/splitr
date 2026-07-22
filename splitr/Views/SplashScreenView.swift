@@ -27,7 +27,7 @@ struct SplashScreen: View {
         ZStack {
             ZStack {
 
-                Color.white
+                Color(.systemBackground)
                     .ignoresSafeArea()
 
                 HStack(spacing: 12) {

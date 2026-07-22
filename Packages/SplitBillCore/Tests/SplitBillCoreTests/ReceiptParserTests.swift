@@ -34,14 +34,13 @@ struct ReceiptParserTests {
         #expect(parsed.items[1].needsReview == false)
         #expect(parsed.items[3].price == 10_000)
         #expect(parsed.printedSubtotal == 135_000)
-        #expect(parsed.servicePercent == 5)
-        #expect(parsed.taxPercent == 10)
-        // 14.175 == 10% of (135.000 + 6.750) → tax was computed on subtotal + service.
-        #expect(parsed.taxBasis == .subtotalPlusService)
+        #expect(parsed.serviceAmount == 6_750)
+        #expect(parsed.taxAmount == 14_175)
+        #expect(parsed.discountAmount == nil)
         #expect(parsed.unparsedLines.isEmpty)
     }
 
-    @Test("Service not taxed: amounts prove tax-on-subtotal basis without % labels")
+    @Test("Tax and service amounts are read straight off the receipt")
     func serviceNotTaxed() {
         let parsed = ReceiptParser.parse(text: """
             BAKMI GM
@@ -55,11 +54,8 @@ struct ReceiptParserTests {
 
         #expect(parsed.items.count == 2)
         #expect(parsed.printedSubtotal == 58_000)
-        // No % printed anywhere — both rates recovered from the amounts.
-        #expect(parsed.servicePercent == 5)
-        #expect(parsed.taxPercent == 10)
-        // 5.800 == 10% of 58.000 (not of 60.900) → tax on subtotal only.
-        #expect(parsed.taxBasis == .subtotal)
+        #expect(parsed.serviceAmount == 2_900)
+        #expect(parsed.taxAmount == 5_800)
     }
 
     @Test("Abbreviated names, '@' quantity pricing, Rp prefixes, decimal tails")
@@ -78,9 +74,7 @@ struct ReceiptParserTests {
         #expect(parsed.items[0].price == 22_000) // from the @unit, not the total
         #expect(parsed.items[2].name == "Croffle Choc")
         #expect(parsed.items[2].price == 28_000) // Rp prefix + ,00 tail stripped
-        #expect(parsed.taxPercent == 10)
-        // No service charge → both bases coincide; basis stays undetermined.
-        #expect(parsed.taxBasis == nil)
+        #expect(parsed.taxAmount == 7_200)
     }
 
     @Test("Trailing x2 marker with a non-divisible total flags both unit rows")
@@ -95,7 +89,7 @@ struct ReceiptParserTests {
         #expect(parsed.items.allSatisfy { $0.needsReview }) // …but flagged for review
     }
 
-    @Test("Discount lines never become items and are surfaced, not dropped")
+    @Test("Discount lines never become items; the amount is captured")
     func discountLine() {
         let parsed = ReceiptParser.parse(text: """
             SOLARIA
@@ -107,7 +101,8 @@ struct ReceiptParserTests {
 
         #expect(parsed.items.count == 2)
         #expect(parsed.items.allSatisfy { ($0.price ?? 0) > 0 })
-        #expect(parsed.unparsedLines == ["Diskon Member       -5.000"])
+        #expect(parsed.discountAmount == 5_000) // read straight off the receipt
+        #expect(parsed.unparsedLines.isEmpty)
         #expect(parsed.printedSubtotal == 48_000)
     }
 
@@ -141,8 +136,7 @@ struct ReceiptParserTests {
         #expect(parsed.items[0].name == "Mie Ayam Bakso")
         #expect(parsed.items[0].price == 24_000)
         #expect(parsed.unparsedLines.contains("Krupuk"))
-        #expect(parsed.taxPercent == nil)
-        #expect(parsed.taxBasis == nil)
+        #expect(parsed.taxAmount == nil)
     }
 
     @Test("Empty and garbage-only input parse to an empty result")
@@ -301,7 +295,7 @@ struct ReceiptParserTests {
 
         #expect(parsed.items.count == 1)
         #expect(parsed.printedSubtotal == 32_000)
-        #expect(parsed.taxPercent == 10)
+        #expect(parsed.taxAmount == 3_200)
     }
 
     @Test("Geometry rides through to drafts for photo highlighting")

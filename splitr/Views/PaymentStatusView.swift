@@ -24,12 +24,8 @@ struct PaymentStatusView: View {
     var body: some View {
         ZStack {
             // MARK: Background
-            Color(
-                red: 237 / 255,
-                green: 242 / 255,
-                blue: 255 / 255
-            )
-            .ignoresSafeArea()
+            Color("PrimaryBackground")
+                .ignoresSafeArea()
 
             if let room {
                 // MARK: Main Content
@@ -56,11 +52,7 @@ struct PaymentStatusView: View {
 
                                 Text(room.name)
                                     .font(
-                                        .system(
-                                            size: 14,
-                                            weight: .semibold,
-                                            design: .monospaced
-                                        )
+                                        .system(.subheadline, design: .monospaced).weight(.semibold)
                                     )
                                     .frame(
                                         maxWidth: .infinity,
@@ -72,7 +64,7 @@ struct PaymentStatusView: View {
 
                                 // MARK: Your Items
                                 Text("Your item’s")
-                                    .font(.system(size: 15))
+                                    .font(.system(.subheadline))
                                     .foregroundStyle(.secondary)
                                     .padding(.top, 20)
 
@@ -99,10 +91,8 @@ struct PaymentStatusView: View {
                                 HStack {
                                     Text("Total")
                                         .font(
-                                            .system(
-                                                size: 17,
-                                                weight: .bold
-                                            )
+                                            .system(.body,
+                                                weight: .bold)
                                         )
 
                                     Spacer()
@@ -110,10 +100,8 @@ struct PaymentStatusView: View {
                                     let totalAmount = room.bills.map(\.grandTotal).reduce(0, +)
                                     Text(totalAmount.rupiah)
                                         .font(
-                                            .system(
-                                                size: 17,
-                                                weight: .bold
-                                            )
+                                            .system(.body,
+                                                weight: .bold)
                                         )
                                 }
                                 .padding(.top, 30)
@@ -125,14 +113,12 @@ struct PaymentStatusView: View {
                                 ) {
                                     Text("Payment Status")
                                         .font(
-                                            .system(
-                                                size: 18,
-                                                weight: .semibold
-                                            )
+                                            .system(.headline,
+                                                weight: .semibold)
                                         )
 
                                     Text("Track everyone's payment.")
-                                        .font(.system(size: 15))
+                                        .font(.system(.subheadline))
                                         .foregroundStyle(.secondary)
                                 }
                                 .padding(.top, 32)
@@ -176,14 +162,12 @@ struct PaymentStatusView: View {
                             } label: {
                                 Text(room.state == .closed ? "Done" : "Make as done")
                                     .font(
-                                        .system(
-                                            size: 17,
-                                            weight: .medium
-                                        )
+                                        .system(.body,
+                                            weight: .medium)
                                     )
                                     .foregroundStyle(.white)
                                     .frame(maxWidth: .infinity)
-                                    .frame(height: 56)
+                                    .frame(minHeight: 56)
                                     .background {
                                         LinearGradient(
                                             colors: [
@@ -213,10 +197,10 @@ struct PaymentStatusView: View {
                                         showSuccessAnimation = true
                                     } label: {
                                         Text("I've Paid")
-                                            .font(.system(size: 17, weight: .medium))
+                                            .font(.system(.body, weight: .medium))
                                             .foregroundStyle(.white)
                                             .frame(maxWidth: .infinity)
-                                            .frame(height: 56)
+                                            .frame(minHeight: 56)
                                             .background(
                                                 LinearGradient(
                                                     colors: [Color("Blue1"), Color("Blue2")],
@@ -229,10 +213,10 @@ struct PaymentStatusView: View {
                                     .buttonStyle(.plain)
                                 } else {
                                     Text("Paid")
-                                        .font(.system(size: 16, weight: .semibold))
+                                        .font(.system(.callout, weight: .semibold))
                                         .foregroundStyle(.green)
                                         .frame(maxWidth: .infinity)
-                                        .frame(height: 56)
+                                        .frame(minHeight: 56)
                                         .background(Color.green.opacity(0.12))
                                         .clipShape(Capsule())
                                 }
@@ -243,7 +227,7 @@ struct PaymentStatusView: View {
                     .padding(.top, 24)
                     .padding(.bottom, 24)
                     .background(
-                        Color.white
+                        Color(.systemBackground)
                             .clipShape(
                                 UnevenRoundedRectangle(
                                     topLeadingRadius: 32,
@@ -293,31 +277,27 @@ private struct ReceiptItemRow: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 16) {
                 Text("x\(quantity)")
-                    .font(.system(size: 13))
+                    .font(.system(.footnote))
                     .foregroundStyle(.secondary)
                     .frame(width: 25, alignment: .leading)
 
                 Text(name)
                     .font(
-                        .system(
-                            size: 16,
-                            weight: .medium
-                        )
+                        .system(.callout,
+                            weight: .medium)
                     )
 
                 Spacer()
 
                 Text(price)
                     .font(
-                        .system(
-                            size: 16,
-                            weight: .medium
-                        )
+                        .system(.callout,
+                            weight: .medium)
                     )
             }
 
             Text(claimersText)
-                .font(.system(size: 12))
+                .font(.system(.caption))
                 .foregroundStyle(claimersText == "Unclaimed" ? Color.red.opacity(0.8) : Color.secondary)
                 .padding(.leading, 41)
         }
@@ -346,7 +326,7 @@ private struct PaymentMemberRow: View {
                         .overlay(Circle().stroke(Color.gray.opacity(0.15), lineWidth: 1))
                 } else {
                     Text(member.avatarEmoji)
-                        .font(.system(size: 24))
+                        .font(.system(.title2))
                         .frame(width: 48, height: 48)
                         .background(Color.gray.opacity(0.1))
                         .clipShape(Circle())
@@ -357,16 +337,14 @@ private struct PaymentMemberRow: View {
                     HStack(spacing: 6) {
                         Text(member.displayName)
                             .font(
-                                .system(
-                                    size: 16,
-                                    weight: .medium
-                                )
+                                .system(.callout,
+                                    weight: .medium)
                             )
                             .foregroundStyle(.primary)
 
                         if member.isHost {
                             Text("Host")
-                                .font(.system(size: 11, weight: .bold))
+                                .font(.system(.caption2, weight: .bold))
                                 .foregroundStyle(Color("Blue2"))
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
@@ -417,12 +395,12 @@ private struct PaymentBadge: View {
                     ? "Paid"
                     : "Unpaid"
             )
-            .font(.system(size: 14, weight: .medium))
+            .font(.system(.subheadline, weight: .medium))
             .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
-        .background(Color.white)
+        .background(Color(.secondarySystemGroupedBackground))
         .overlay {
             RoundedRectangle(cornerRadius: 6)
                 .stroke(Color.gray.opacity(0.25), lineWidth: 1)
@@ -457,7 +435,7 @@ private struct TicketCard<Content: View>: View {
                 toothWidth: 28,
                 toothHeight: 14
             )
-            .fill(Color.white)
+            .fill(Color(.secondarySystemGroupedBackground))
 
             content
                 .padding(.horizontal, 24)

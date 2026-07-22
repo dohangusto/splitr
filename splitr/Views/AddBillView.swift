@@ -32,11 +32,16 @@ struct AddBillForm: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var merchant = ""
-    @State private var taxPercent = 0
-    @State private var servicePercent = 0
-    @State private var taxBasis: TaxBasis = .subtotalPlusService
+    /// Charges and discount are whole-rupiah amounts straight off the receipt.
+    @State private var taxAmount = 0
+    @State private var serviceAmount = 0
+    @State private var discountAmount = 0
     @State private var items: [DraftItem] = [DraftItem()]
     @State private var displayedPhoto: UIImage?
+
+    private var grandTotal: Int {
+        subtotal + taxAmount + serviceAmount - discountAmount
+    }
 
     private var validItems: [DraftItem] {
         items.filter {
@@ -104,17 +109,15 @@ struct AddBillForm: View {
                 Text("Line items")
             }
 
-            Section("Tax & service") {
-                Stepper("PB1 tax: \(taxPercent)%", value: $taxPercent, in: 0...20)
-                Stepper("Service charge: \(servicePercent)%", value: $servicePercent, in: 0...15)
-                Picker("Tax applies to", selection: $taxBasis) {
-                    Text("Subtotal + service").tag(TaxBasis.subtotalPlusService)
-                    Text("Subtotal only").tag(TaxBasis.subtotal)
-                }
+            Section("Charges & discount") {
+                amountRow("PB1 tax", value: $taxAmount)
+                amountRow("Service charge", value: $serviceAmount)
+                amountRow("Discount", value: $discountAmount)
             }
 
             Section {
                 LabeledContent("Subtotal", value: subtotal.rupiah)
+                LabeledContent("Total") { Text(grandTotal.rupiah).bold() }
             }
         }
         .disabled(isReadOnly)
@@ -140,15 +143,15 @@ struct AddBillForm: View {
             displayedPhoto = photo ?? ReceiptPhotoStore.load(existingBill?.photoReference)
             if let existingBill {
                 merchant = existingBill.merchantName
-                taxPercent = existingBill.taxRate.basisPoints / 100
-                servicePercent = existingBill.serviceChargeRate.basisPoints / 100
-                taxBasis = existingBill.taxBasis
+                taxAmount = existingBill.tax
+                serviceAmount = existingBill.serviceCharge
+                discountAmount = existingBill.discount
                 items = Self.drafts(from: existingBill)
             } else if let scan {
                 merchant = scan.merchantName ?? ""
-                taxPercent = scan.taxPercent ?? taxPercent
-                servicePercent = scan.servicePercent ?? 0
-                taxBasis = scan.taxBasis ?? taxBasis
+                taxAmount = scan.taxAmount ?? 0
+                serviceAmount = scan.serviceAmount ?? 0
+                discountAmount = scan.discountAmount ?? 0
                 if !scan.items.isEmpty {
                     items = scan.items
                 }
@@ -181,6 +184,15 @@ struct AddBillForm: View {
         }
     }
 
+    /// A right-aligned whole-rupiah entry row for a charge or discount.
+    private func amountRow(_ title: String, value: Binding<Int>) -> some View {
+        LabeledContent(title) {
+            TextField("0", value: value, format: .number)
+                .keyboardType(.numberPad)
+                .multilineTextAlignment(.trailing)
+        }
+    }
+
     private func save() {
         // Qty explosion: one BillItem per unit, so each unit is claimable alone.
         let billItems = validItems.flatMap { draft in
@@ -195,9 +207,9 @@ struct AddBillForm: View {
             // Editing (room still .open): keep id, createdAt, and the
             // stored photo; replace everything the form controls.
             updated.merchantName = merchant.trimmingCharacters(in: .whitespaces)
-            updated.taxRate = .percent(taxPercent)
-            updated.serviceChargeRate = .percent(servicePercent)
-            updated.taxBasis = taxBasis
+            updated.tax = taxAmount
+            updated.serviceCharge = serviceAmount
+            updated.discount = discountAmount
             updated.items = billItems
             store.updateBill(updated, roomID: roomID)
         } else {
@@ -206,9 +218,9 @@ struct AddBillForm: View {
             let bill = Bill(
                 merchantName: merchant.trimmingCharacters(in: .whitespaces),
                 photoReference: photoReference,
-                taxRate: .percent(taxPercent),
-                serviceChargeRate: .percent(servicePercent),
-                taxBasis: taxBasis,
+                tax: taxAmount,
+                serviceCharge: serviceAmount,
+                discount: discountAmount,
                 items: billItems
             )
             store.addBill(bill, roomID: roomID)

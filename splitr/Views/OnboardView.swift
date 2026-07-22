@@ -68,22 +68,18 @@ struct OnboardingView: View {
                     if currentPage == 0 {
                         Text("Multiple Bills")
                             .font(
-                                .system(
-                                    size: 32,
-                                    weight: .bold
-                                )
+                                .system(.title,
+                                    weight: .bold)
                             )
-                            .foregroundStyle(.black)
+                            .foregroundStyle(.primary)
                             .transition(.asymmetric(insertion: .opacity, removal: .opacity))
 
                         Text(
                             "Add as many bills as you need and split\nevery expense with everyone involved."
                         )
                         .font(
-                            .system(
-                                size: 17,
-                                weight: .regular
-                            )
+                            .system(.body,
+                                weight: .regular)
                         )
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -92,22 +88,18 @@ struct OnboardingView: View {
                     } else {
                         Text("Split Together")
                             .font(
-                                .system(
-                                    size: 32,
-                                    weight: .bold
-                                )
+                                .system(.title,
+                                    weight: .bold)
                             )
-                            .foregroundStyle(.black)
+                            .foregroundStyle(.primary)
                             .transition(.asymmetric(insertion: .opacity, removal: .opacity))
 
                         Text(
                             "Join instantly with Nearby and split\nevery bill easily with your friends."
                         )
                         .font(
-                            .system(
-                                size: 17,
-                                weight: .regular
-                            )
+                            .system(.body,
+                                weight: .regular)
                         )
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -129,7 +121,7 @@ struct OnboardingView: View {
                             }
                         } label: {
                             Capsule()
-                                .fill(currentPage == index ? Color(red: 78/255, green: 124/255, blue: 247/255) : Color.black.opacity(0.1))
+                                .fill(currentPage == index ? Color("SplitAirBlue") : Color.black.opacity(0.1))
                                 .frame(width: currentPage == index ? 20 : 8, height: 8)
                         }
                         .buttonStyle(.plain)
@@ -154,14 +146,12 @@ struct OnboardingView: View {
 
                     Text(currentPage == 1 ? "Get Started" : "Continue")
                         .font(
-                            .system(
-                                size: 17,
-                                weight: .semibold
-                            )
+                            .system(.body,
+                                weight: .semibold)
                         )
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
-                        .frame(height: 56)
+                        .frame(minHeight: 56)
                         .background(
                             LinearGradient(
                                 colors: [

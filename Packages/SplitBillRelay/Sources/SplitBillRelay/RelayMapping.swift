@@ -115,9 +115,9 @@ public enum RelayMapping {
         SnapshotDTO(
             sessionId: sessionId,
             merchantName: bill.merchantName,
-            taxRate: bill.taxRate,
-            serviceChargeRate: bill.serviceChargeRate,
-            taxBasis: bill.taxBasis,
+            tax: bill.tax,
+            serviceCharge: bill.serviceCharge,
+            discount: bill.discount,
             items: bill.items.map(itemDTO(from:)),
             participants: participants.map(participantDTO(from:)),
             roomState: roomState

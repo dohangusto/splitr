@@ -35,6 +35,12 @@ public struct Fraction: Sendable, Hashable, Comparable, CustomStringConvertible 
         return r < 0 ? q - 1 : q
     }
 
+    /// Smallest integer greater than or equal to the exact value.
+    public var ceiledValue: Int {
+        // ceil(x) == -floor(-x); denominators are always positive.
+        -Fraction(-numerator, denominator).flooredValue
+    }
+
     /// Nearest integer, with halves rounding up (standard receipt rounding).
     public var roundedHalfUpValue: Int {
         Fraction(2 * numerator + denominator, 2 * denominator).flooredValue

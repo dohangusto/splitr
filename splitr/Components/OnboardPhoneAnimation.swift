@@ -231,7 +231,7 @@ struct CircleShineBackground: View {
     @State private var rotation: Double = 0.0
     @State private var scale: CGFloat = 1.0
     
-    private let buttonBlue = Color(red: 78/255, green: 124/255, blue: 247/255)
+    private let buttonBlue = Color("SplitAirBlue")
     
     var body: some View {
         ZStack {

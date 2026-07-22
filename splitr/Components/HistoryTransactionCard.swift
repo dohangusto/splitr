@@ -17,7 +17,7 @@ struct HistoryTransactionCard: View {
                     .frame(width: 48, height: 48)
  
                 Image(systemName: "checkmark")
-                    .font(.system(size: 18, weight: .bold))
+                    .font(.system(.headline, weight: .bold))
                     .foregroundColor(.green)
             }
  
@@ -25,7 +25,7 @@ struct HistoryTransactionCard: View {
                 Text(roomName)
                     .font(.subheadline)
                     .bold()
-                    .foregroundColor(.black)
+                    .foregroundStyle(.primary)
  
                 Text("\(membersCount) members, \(billsCount) bills")
                     .font(.caption)
@@ -36,7 +36,7 @@ struct HistoryTransactionCard: View {
             
             HStack(spacing: 4) {
                 Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 12))
+                    .font(.system(.caption))
                 Text(statusLabel)
                     .font(.caption)
                     .bold()
@@ -48,12 +48,12 @@ struct HistoryTransactionCard: View {
             .cornerRadius(12)
  
             Image(systemName: "chevron.right")
-                .font(.system(size: 14, weight: .regular))
+                .font(.system(.subheadline, weight: .regular))
                 .foregroundColor(.secondary)
         }
         .padding(.horizontal, 20)
         .frame(maxWidth: .infinity, minHeight: 110, idealHeight: 115, maxHeight: 120, alignment: .leading)
-        .background(Color.white)
+        .background(Color(.secondarySystemGroupedBackground))
         .cornerRadius(24)
         .shadow(color: Color.black.opacity(0.04), radius: 10, x: 0, y: 5)
         .contentShape(Rectangle())

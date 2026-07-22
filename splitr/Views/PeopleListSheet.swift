@@ -20,11 +20,17 @@ struct PeopleListSheet: View {
     @State private var showJoinMember = false
     @State private var showNearbyHost = false
     @State private var inviteURL: URL?
+    @State private var memberToRemove: Member?
 
     private var room: Room? { store.room(withID: roomID) }
     /// New members can join only before settling starts.
     private var canAdd: Bool {
         room.map { $0.state == .open || $0.state == .claiming } ?? false
+    }
+    /// Only the host removes people, and only while the room is still live.
+    private var canManageMembers: Bool {
+        guard let room else { return false }
+        return store.actingMemberID(in: roomID) == room.hostMemberID && room.state != .closed
     }
 
     var body: some View {
@@ -33,8 +39,8 @@ struct PeopleListSheet: View {
             // MARK: - Header
             ZStack {
                 Text("List people")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(.black)
+                    .font(.system(.title3, weight: .semibold))
+                    .foregroundStyle(.primary)
 
                 HStack {
                     // Close Button
@@ -42,7 +48,7 @@ struct PeopleListSheet: View {
                         dismiss()
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 24, weight: .regular))
+                            .font(.system(.title2, weight: .regular))
                             .foregroundStyle(.gray)
                             .frame(width: 56, height: 56)
                             .background(Color.gray.opacity(0.12))
@@ -57,11 +63,11 @@ struct PeopleListSheet: View {
                             addNewTapped()
                         } label: {
                             Text("Add new")
-                                .font(.system(size: 18, weight: .medium))
-                                .foregroundStyle(.black.opacity(0.7))
+                                .font(.system(.headline, weight: .medium))
+                                .foregroundStyle(.primary)
                                 .padding(.horizontal, 20)
-                                .frame(height: 56)
-                                .background(.white)
+                                .frame(minHeight: 56)
+                                .background(Color(.secondarySystemGroupedBackground))
                                 .clipShape(Capsule())
                                 .shadow(
                                     color: .black.opacity(0.08),
@@ -80,20 +86,20 @@ struct PeopleListSheet: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 12) {
                     ForEach(room?.members ?? []) { member in
-                        PersonRow(member: member)
+                        PersonRow(
+                            member: member,
+                            // Host can remove any non-host member; never itself.
+                            onRemove: (canManageMembers && !member.isHost)
+                                ? { memberToRemove = member }
+                                : nil
+                        )
                     }
                 }
                 .padding(.horizontal, 24)
                 .padding(.top, 28)
             }
         }
-        .background(
-            Color(
-                red: 0.98,
-                green: 0.98,
-                blue: 0.98
-            )
-        )
+        .background(Color(.systemGroupedBackground))
         .confirmationDialog("Add people", isPresented: $showAddOptions) {
             Button("Add People Nearby") { showNearbyHost = true }
             Button("Invite via Link") { fetchInviteURL() }
@@ -117,6 +123,16 @@ struct PeopleListSheet: View {
         .sheet(item: $inviteURL) { url in
             ShareLinkSheet(url: url, roomName: room?.name ?? "")
         }
+        .alert(item: $memberToRemove) { member in
+            Alert(
+                title: Text("Remove \(member.displayName)?"),
+                message: Text("All items they claimed — including their share of split items — will return to unclaimed."),
+                primaryButton: .destructive(Text("Remove")) {
+                    store.kick(memberID: member.id, roomID: roomID)
+                },
+                secondaryButton: .cancel()
+            )
+        }
     }
 
     /// Allows the host to choose between Nearby Interaction, invite link, or manual entry.
@@ -137,6 +153,9 @@ struct PeopleListSheet: View {
 struct PersonRow: View {
 
     let member: Member
+    /// Non-nil only when the acting host may remove this person. When set, a
+    /// trailing remove control appears; the confirmation lives in the sheet.
+    var onRemove: (() -> Void)?
 
     var body: some View {
         HStack(spacing: 16) {
@@ -148,7 +167,7 @@ struct PersonRow: View {
                         .scaledToFill()
                 } else {
                     Text(member.avatarEmoji)
-                        .font(.system(size: 26))
+                        .font(.system(.title2))
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .background(Color(.systemGray6))
                 }
@@ -164,8 +183,8 @@ struct PersonRow: View {
             }
 
             Text(member.displayName)
-                .font(.system(size: 19, weight: .medium))
-                .foregroundStyle(.black)
+                .font(.system(.headline, weight: .medium))
+                .foregroundStyle(.primary)
 
             if member.isHost {
                 Text("Host")
@@ -174,10 +193,20 @@ struct PersonRow: View {
             }
 
             Spacer()
+
+            if let onRemove {
+                Button(role: .destructive, action: onRemove) {
+                    Image(systemName: "minus.circle.fill")
+                        .font(.system(.title2))
+                        .foregroundStyle(.red.opacity(0.85))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Remove \(member.displayName)")
+            }
         }
         .padding(.horizontal, 16)
-        .frame(height: 80)
-        .background(.white)
+        .frame(minHeight: 80)
+        .background(Color(.secondarySystemGroupedBackground))
         .clipShape(
             RoundedRectangle(cornerRadius: 24)
         )

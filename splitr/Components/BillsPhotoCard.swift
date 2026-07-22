@@ -30,58 +30,57 @@ struct BillsPhotoCard: View {
                     .foregroundStyle(.secondary)
             }
 
-            HStack(alignment: .top, spacing: 16) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: 14) {
 
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 14) {
-
-                        ForEach(Array(photos.enumerated()), id: \.offset) { _, photo in
-                            Button {
-                                onPhotoTapped(photo)
-                            } label: {
-                                Image(uiImage: photo)
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 90, height: 90)
-                                    .clipShape(
-                                        RoundedRectangle(cornerRadius: 18)
-                                    )
-                            }
-                            .buttonStyle(.plain)
+                    ForEach(Array(photos.enumerated()), id: \.offset) { _, photo in
+                        Button {
+                            onPhotoTapped(photo)
+                        } label: {
+                            Image(uiImage: photo)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 90, height: 90)
+                                .clipShape(
+                                    RoundedRectangle(cornerRadius: 18)
+                                )
                         }
+                        .buttonStyle(.plain)
                     }
-                }
 
-                if showsAddButton {
-                    Button {
-                        onAddTapped()
-                    } label: {
-                        RoundedRectangle(cornerRadius: 18)
-                            .fill(Color.white)
-                            .frame(width: 90, height: 90)
-                            .overlay {
+                    // The "+" trails the newest photo directly, scrolling
+                    // with the row instead of pinning to the card's edge.
+                    if showsAddButton {
+                        Button {
+                            onAddTapped()
+                        } label: {
+                            RoundedRectangle(cornerRadius: 18)
+                                .fill(Color(.secondarySystemGroupedBackground))
+                                .frame(width: 90, height: 90)
+                                .overlay {
 
-                                RoundedRectangle(cornerRadius: 18)
-                                    .stroke(
-                                        Color(.systemGray5),
-                                        style: StrokeStyle(
-                                            lineWidth: 2,
-                                            dash: [8]
+                                    RoundedRectangle(cornerRadius: 18)
+                                        .stroke(
+                                            Color(.systemGray5),
+                                            style: StrokeStyle(
+                                                lineWidth: 2,
+                                                dash: [8]
+                                            )
                                         )
-                                    )
 
-                                Image(systemName: "plus")
-                                    .font(.system(size: 30))
-                                    .foregroundStyle(.gray)
-                            }
+                                    Image(systemName: "plus")
+                                        .font(.system(.title))
+                                        .foregroundStyle(.gray)
+                                }
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
             }
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white)
+        .background(Color(.secondarySystemGroupedBackground))
         .clipShape(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
         )
@@ -90,7 +89,7 @@ struct BillsPhotoCard: View {
 
 #Preview {
     ZStack {
-        Color(red: 237/255, green: 242/255, blue: 255/255)
+        Color("PrimaryBackground")
             .ignoresSafeArea()
 
         BillsPhotoCard(

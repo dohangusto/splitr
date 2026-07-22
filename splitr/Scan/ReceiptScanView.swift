@@ -174,9 +174,9 @@ struct ReceiptScanFlow: View {
         let bill = Bill(
             merchantName: merchant,
             photoReference: photoReference,
-            taxRate: .percent(parsed.taxPercent ?? 10),
-            serviceChargeRate: .percent(parsed.servicePercent ?? 0),
-            taxBasis: parsed.taxBasis ?? .subtotalPlusService,
+            tax: parsed.taxAmount ?? 0,
+            serviceCharge: parsed.serviceAmount ?? 0,
+            discount: parsed.discountAmount ?? 0,
             items: billItems
         )
         store.addBill(bill, roomID: roomID)

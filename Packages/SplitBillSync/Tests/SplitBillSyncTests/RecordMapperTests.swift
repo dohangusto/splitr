@@ -35,9 +35,9 @@ struct RecordMapperTests {
         let bill = Bill(
             merchantName: "Warung Tekko",
             photoReference: "photo-123",
-            taxRate: .percent(10),
-            serviceChargeRate: .percent(5),
-            taxBasis: .subtotalPlusService,
+            tax: 14_175,
+            serviceCharge: 6_750,
+            discount: 5_000,
             items: [
                 BillItem(id: soloID, name: "Nasi Goreng", unitPrice: 55_000,
                          claimState: .claimed([Claim(itemID: soloID, memberID: dita.id, portion: .one)])),
@@ -55,9 +55,9 @@ struct RecordMapperTests {
         )
         let secondBill = Bill(
             merchantName: "Kopi Kenangan",
-            taxRate: .percent(11),
-            serviceChargeRate: .zero,
-            taxBasis: .subtotal,
+            tax: 1_980,
+            serviceCharge: 0,
+            discount: 0,
             items: [BillItem(name: "Americano", unitPrice: 18_000)],
             createdAt: Date(timeIntervalSince1970: 1_770_000_100)
         )
@@ -93,10 +93,10 @@ struct RecordMapperTests {
 
         #expect(decoded.state == .claiming)
         #expect(decoded.members.map(\.paymentStatus) == [.none, .memberMarkedPaid, .hostConfirmed])
-        #expect(decoded.bills[0].taxBasis == .subtotalPlusService)
-        #expect(decoded.bills[1].taxBasis == .subtotal)
-        #expect(decoded.bills[0].taxRate == .percent(10))
-        #expect(decoded.bills[1].taxRate == .percent(11))
+        #expect(decoded.bills[0].tax == 14_175)
+        #expect(decoded.bills[0].serviceCharge == 6_750)
+        #expect(decoded.bills[0].discount == 5_000)
+        #expect(decoded.bills[1].tax == 1_980)
 
         let items = decoded.bills[0].items
         #expect(items[0].claimState.claimerIDs.count == 1)
