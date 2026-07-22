@@ -111,9 +111,12 @@ public enum ReceiptParser {
                 continue
             }
             if contains(lowered, any: Self.totalKeywords) {
-                flushPending()
-                sawTotal = true
-                continue
+                let headerKeywords = ["item", "qty", "pcs", "barang", "menu", "nama"]
+                if !contains(lowered, any: headerKeywords) {
+                    flushPending()
+                    sawTotal = true
+                    continue
+                }
             }
             if contains(lowered, any: Self.ignoreKeywords) {
                 continue
@@ -234,6 +237,7 @@ public enum ReceiptParser {
         }
         name = cleaned(name)
         guard !name.isEmpty else { return nil }
+        guard name.contains(where: { $0.isLetter }) else { return nil }
 
         var unitPrice: Int
         var needsReview = false
@@ -246,6 +250,8 @@ public enum ReceiptParser {
             // Single amount (or ambiguous): treat the last as the line total.
             (unitPrice, needsReview) = unitFromTotal(amounts.last!, qty: qty)
         }
+
+        guard !isHeaderNoise(name, price: unitPrice) else { return nil }
 
         let box = cells.compactMap(\.box).reduce(nil as NormalizedRect?) { acc, next in
             acc.map { $0.union(next) } ?? next
@@ -291,10 +297,18 @@ public enum ReceiptParser {
             qty = q
             unitPrice = unit
             needsReview = unit * q != money.value
+        } else if let match = rest.wholeMatch(of: /(?:Rp\.?\s*)?([\d.,]+)\s*[xX]\s*(\d{1,2})/),
+                  let unit = moneyValue(String(match.1)), let q = Int(match.2) {
+            // "25.000 x 2" — unit price first, then qty.
+            qty = q
+            unitPrice = unit
+            needsReview = unit * q != money.value
         } else {
             return nil // has its own name — not a continuation
         }
         guard qty >= 1 else { return nil }
+        guard pendingName.contains(where: { $0.isLetter }) else { return nil }
+        guard !isHeaderNoise(pendingName, price: unitPrice) else { return nil }
         return explode(
             name: pendingName, unitPrice: unitPrice, qty: qty,
             needsReview: needsReview, box: box, confidence: confidence
@@ -334,9 +348,19 @@ public enum ReceiptParser {
             name.removeSubrange(match.range)
             (unitPrice, needsReview) = unitFromTotal(money.value, qty: qty)
         }
+        // "Nama 22.000 x 2 [44.000]" — unit price and qty; amount is the line total.
+        else if let match = name.firstMatch(of: /(?:Rp\.?\s*)?([\d.,]+)\s*[xX]\s*(\d{1,2})\s*$/),
+                let unit = moneyValue(String(match.1)) {
+            qty = Int(match.2) ?? 1
+            unitPrice = unit
+            name.removeSubrange(match.range)
+            needsReview = unit * qty != money.value
+        }
 
         let cleanedName = cleaned(name)
         guard !cleanedName.isEmpty, qty >= 1 else { return nil }
+        guard cleanedName.contains(where: { $0.isLetter }) else { return nil }
+        guard !isHeaderNoise(cleanedName, price: unitPrice) else { return nil }
         return explode(
             name: cleanedName, unitPrice: unitPrice, qty: qty,
             needsReview: needsReview, box: box, confidence: confidence
@@ -376,7 +400,7 @@ public enum ReceiptParser {
     /// "Es Teh Rp 10.000", "Diskon -5.000"). Returns nil if the line
     /// doesn't end in something money-shaped.
     public static func trailingMoney(in line: String) -> (value: Int, range: Range<String.Index>)? {
-        let pattern = /(?:Rp\.?\s*|IDR\s*)?(-?\(?\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{2})?\)?|-?\(?\d{4,}\)?)\s*(?:,-)?\s*$/
+        let pattern = /(?:Rp\.?\s*|IDR\s*)?(-?\(?\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{2})?\)?|-?\(?\d{4,}(?:[.,]\d{2})?\)?|-?\(?\d{1,3}[.,]\d{2}\)?)\s*(?:,-)?\s*$/
         guard let match = line.firstMatch(of: pattern),
               let value = moneyValue(String(match.1)) else { return nil }
         return (value, match.range)
@@ -393,12 +417,25 @@ public enum ReceiptParser {
             negative = true
             s = String(s.dropFirst().dropLast())
         }
-        // Trailing 2-digit decimals after grouped thousands: "55.000,00".
-        if let match = s.firstMatch(of: /^(\d{1,3}(?:[.,]\d{3})+)[.,]\d{2}$/) {
-            s = String(match.1)
+        
+        // Handle decimal suffixes (.00 or ,00) and short thousands notation.
+        if let match = s.firstMatch(of: /^([\d.,]+)[.,](\d{2})$/) {
+            let firstGroup = String(match.1)
+            let secondGroup = String(match.2)
+            let cleanedFirst = firstGroup.replacingOccurrences(of: ".", with: "")
+                                         .replacingOccurrences(of: ",", with: "")
+            if cleanedFirst.count < 4 {
+                // Short notation (e.g. "15.00" -> 15000, "1.50" -> 1500)
+                s = cleanedFirst + secondGroup + "0"
+            } else {
+                // Standard decimals (e.g. "15.000,00" -> 15000, "15000.00" -> 15000)
+                s = cleanedFirst
+            }
+        } else {
+            s = s.replacingOccurrences(of: ".", with: "")
+                .replacingOccurrences(of: ",", with: "")
         }
-        s = s.replacingOccurrences(of: ".", with: "")
-            .replacingOccurrences(of: ",", with: "")
+        
         guard let value = Int(s), value > 0 else { return nil }
         return negative ? -value : value
     }
@@ -467,6 +504,38 @@ public enum ReceiptParser {
 
     private static func contains(_ lowered: String, any keywords: [String]) -> Bool {
         keywords.contains { lowered.contains($0) }
+    }
+
+    private static let noiseKeywords = [
+        "jl.", "jalan", "blok", "rt/rw", "kecamatan", "kelurahan", "kabupaten",
+        "kota", "provinsi", "jakarta", "tangerang", "bekasi", "depok", "bogor",
+        "indonesia", "telp", "phone", "npwp", "n.p.w.p", "gedung", "menara",
+        "toko", "cabang", "tanggal", "date", "time", "waktu", "jam", "invoice",
+        "no.", "nomor", "transaksi", "receipt", "inv", "trx", "bill", "cashier",
+        "kasir", "spbu", "merchant", "terminal"
+    ]
+
+    private static func isHeaderNoise(_ text: String, price: Int) -> Bool {
+        let lowered = text.lowercased()
+        
+        // 1. Extreme price threshold (e.g. NPWPs/Tax IDs, invoice numbers recognized as prices)
+        if price > 5_000_000 {
+            return true
+        }
+        
+        // 2. Typical Indonesian header/address keywords
+        for kw in noiseKeywords {
+            if lowered.contains(kw) {
+                return true
+            }
+        }
+        
+        // 3. Regular expression to detect Tax/NPWP/Phone formats
+        if text.firstMatch(of: /\d{2,}\.\d{3}\.\d{3}/) != nil {
+            return true
+        }
+        
+        return false
     }
 
     private static let subtotalKeywords = ["subtotal", "sub total", "sub-total", "sub ttl"]

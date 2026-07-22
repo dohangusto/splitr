@@ -1,6 +1,7 @@
 @preconcurrency import AVFoundation
 import CoreImage
 import CoreImage.CIFilterBuiltins
+import Photos
 import SplitBillCore
 import SwiftUI
 import Vision
@@ -335,7 +336,7 @@ private extension UIImage {
     /// Redraws with `.up` orientation so Vision and Core Image see the
     /// pixels the way the user did.
     func normalizedUp() -> UIImage {
-        guard imageOrientation != .up else { return self }
+        guard imageOrientation != .up || cgImage == nil else { return self }
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
         return UIGraphicsImageRenderer(size: size, format: format).image { _ in
@@ -364,6 +365,11 @@ struct ReceiptCaptureView: View {
     var onPickPhoto: () -> Void
     var onCancel: () -> Void
 
+    @State private var galleryItems: [ReceiptGalleryItem] = []
+    @State private var galleryStatus: PHAuthorizationStatus = .notDetermined
+    @State private var isGalleryLoading = false
+    private let imageManager = PHCachingImageManager()
+
     var body: some View {
         ZStack {
             switch model.status {
@@ -388,16 +394,130 @@ struct ReceiptCaptureView: View {
                 Button("Choose a Photo", systemImage: "photo.on.rectangle", action: onPickPhoto)
             }
         }
-        .task { await model.start() }
+        .task {
+            async let camera = model.start()
+            async let gallery = loadGallery()
+            _ = await (camera, gallery)
+        }
         .onDisappear { model.stop() }
     }
 
     private var cameraSurface: some View {
         CameraPreview(controller: model.controller, quadDevicePoints: model.quadDevicePoints)
             .ignoresSafeArea()
-            .overlay(alignment: .bottom) { shutterBar }
+            .overlay(alignment: .bottom) {
+                shutterBar
+                    .padding(.bottom, 12)
+            }
+            .overlay(alignment: .bottomTrailing) {
+                galleryButton
+                    .padding(.trailing, 20)
+                    .padding(.bottom, 20)
+            }
             .overlay(alignment: .topTrailing) { torchButton }
             .background(Color.black.ignoresSafeArea())
+    }
+
+    private var galleryButton: some View {
+        Group {
+            if galleryStatus == .authorized || galleryStatus == .limited {
+                Button(action: onPickPhoto) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .fill(Color.black.opacity(0.4))
+                            .frame(width: 72, height: 72)
+                        Image(systemName: "photo.on.rectangle")
+                            .font(.title2)
+                            .foregroundColor(.white)
+                    }
+                }
+                .buttonStyle(.plain)
+                .shadow(color: .black.opacity(0.25), radius: 8, x: 0, y: 4)
+            } else if galleryStatus == .denied || galleryStatus == .restricted {
+                Button("Library") {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .padding(8)
+                .background(Color.black.opacity(0.35))
+                .cornerRadius(18)
+            } else {
+                Button(action: onPickPhoto) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .fill(Color.black.opacity(0.4))
+                            .frame(width: 72, height: 72)
+                        Image(systemName: "photo.on.rectangle")
+                            .font(.title2)
+                            .foregroundColor(.white)
+                    }
+                }
+                .buttonStyle(.plain)
+                .shadow(color: .black.opacity(0.25), radius: 8, x: 0, y: 4)
+            }
+        }
+    }
+
+    private func selectAsset(_ asset: PHAsset) async {
+        guard let image = await requestImage(for: asset, targetSize: CGSize(width: 2000, height: 2000)) else { return }
+        onCapture(image)
+    }
+
+    @MainActor
+    private func loadGallery() async {
+        isGalleryLoading = true
+        defer { isGalleryLoading = false }
+
+        var status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        if status == .notDetermined {
+            status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+        }
+        galleryStatus = status
+
+        guard status == .authorized || status == .limited else {
+            galleryItems = []
+            return
+        }
+
+        let request = PHFetchOptions()
+        request.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+        request.fetchLimit = 10
+        let assets = PHAsset.fetchAssets(with: .image, options: request)
+
+        var items: [ReceiptGalleryItem] = []
+        assets.enumerateObjects { asset, _, _ in
+            items.append(ReceiptGalleryItem(asset: asset))
+        }
+        galleryItems = items
+
+        for index in galleryItems.indices {
+            let asset = galleryItems[index].asset
+            if let thumbnail = await requestImage(for: asset, targetSize: CGSize(width: 180, height: 180)) {
+                galleryItems[index].thumbnail = thumbnail
+            }
+        }
+    }
+
+    private func requestImage(for asset: PHAsset, targetSize: CGSize) async -> UIImage? {
+        await withCheckedContinuation { continuation in
+            let options = PHImageRequestOptions()
+            options.isSynchronous = false
+            options.deliveryMode = .highQualityFormat
+            options.resizeMode = .exact
+            options.isNetworkAccessAllowed = true
+            imageManager.requestImage(for: asset, targetSize: targetSize, contentMode: .aspectFill, options: options) { image, _ in
+                continuation.resume(returning: image)
+            }
+        }
+    }
+
+    private struct ReceiptGalleryItem: Identifiable {
+        let id = UUID()
+        let asset: PHAsset
+        var thumbnail: UIImage? = nil
     }
 
     private var shutterBar: some View {

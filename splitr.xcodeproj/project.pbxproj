@@ -236,7 +236,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 2640;
-				LastUpgradeCheck = 2640;
+				LastUpgradeCheck = 2660;
 				TargetAttributes = {
 					34D845583005421600731F4F = {
 						CreatedOnToolsVersion = 26.4;
@@ -373,7 +373,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = 9PP7722MM6;
+				DEVELOPMENT_TEAM = 7FF959KWLN;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -397,6 +397,7 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -437,7 +438,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = 9PP7722MM6;
+				DEVELOPMENT_TEAM = 7FF959KWLN;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -454,6 +455,7 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				VALIDATE_PRODUCT = YES;
 			};
@@ -472,9 +474,10 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = splitr/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.finance";
-				INFOPLIST_KEY_NSCameraUsageDescription = "splitr scans your restaurant receipt to read the items, so everyone can claim what they ordered.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "splitr needs the camera to scan your receipt.";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "splitr uses the local network to connect with nearby iPhones so friends can join your bill room.";
 				INFOPLIST_KEY_NSNearbyInteractionUsageDescription = "splitr uses your iPhone's precise location to let friends join your bill room by bringing their phone close to yours.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "splitr needs access to your photo library to let you pick an existing receipt.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -515,9 +518,10 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = splitr/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.finance";
-				INFOPLIST_KEY_NSCameraUsageDescription = "splitr scans your restaurant receipt to read the items, so everyone can claim what they ordered.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "splitr needs the camera to scan your receipt.";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "splitr uses the local network to connect with nearby iPhones so friends can join your bill room.";
 				INFOPLIST_KEY_NSNearbyInteractionUsageDescription = "splitr uses your iPhone's precise location to let friends join your bill room by bringing their phone close to yours.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "splitr needs access to your photo library to let you pick an existing receipt.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -555,7 +559,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.c4.splitrTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.c4.splitr;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -577,7 +581,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.c4.splitrTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.c4.splitr;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;

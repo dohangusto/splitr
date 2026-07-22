@@ -37,10 +37,22 @@ enum AppComposition {
 @main
 struct splitrApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+    @State private var isShowingSplash = true
 
     var body: some Scene {
         WindowGroup {
-            HomePageView(store: AppComposition.store)
+            if isShowingSplash {
+                SplashScreen {
+                    isShowingSplash = false
+                }
+            } else if hasCompletedOnboarding {
+                HomePageView(store: AppComposition.store)
+            } else {
+                OnboardingView {
+                    hasCompletedOnboarding = true
+                }
+            }
         }
     }
 }

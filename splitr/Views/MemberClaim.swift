@@ -68,14 +68,15 @@ private struct MenuItemRow: View {
     let actingID: UUID
     let interactive: Bool
     let onToggle: () -> Void
+    var onForceAssign: ((UUID) -> Void)? = nil
 
     /// The checkbox is self-only: checked means "I'm on this item".
     private var iAmIn: Bool { item.involves(actingID) }
 
-    /// Exclusive item someone else holds, or a host assignment — the member
-    /// can't act on it. Shared items stay joinable no matter who's on them.
+    /// Exclusive item host assignment — the member can't act on it.
+    /// Shared items stay joinable by any member so multiple users can claim.
     private var locked: Bool {
-        (item.isExclusivelyClaimed && !iAmIn) || item.isForceAssigned
+        item.isForceAssigned
     }
 
     /// Who's on the item — the roster, so sharing is never a blind on/off.
@@ -121,11 +122,34 @@ private struct MenuItemRow: View {
                         .foregroundColor(.secondary)
                 }
                 Spacer()
-                Text(item.unitPrice.rupiah)
+                let splitPrice = item.unitPrice / max(1, item.claimState.claimerIDs.count)
+                Text(splitPrice.rupiah)
                     .font(.subheadline)
             }
         }
         .padding(.vertical, 22)
+        .contextMenu {
+            let actingIsHost = actingID == room.hostMemberID
+            if actingIsHost {
+                Menu("Assign to…") {
+                    ForEach(room.members) { member in
+                        Button {
+                            onForceAssign?(member.id)
+                        } label: {
+                            Label {
+                                Text(member.displayName)
+                            } icon: {
+                                if let uiImage = UIImage(named: member.avatarEmoji) {
+                                    Image(uiImage: uiImage)
+                                } else {
+                                    Text(member.avatarEmoji)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -139,9 +163,8 @@ struct MemberClaim: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var collapsedBillIDs: Set<UUID> = []
-    /// Set when releasing an item shared by several members: warn first.
-    @State private var sharedReleaseTarget: (itemID: UUID, billID: UUID)?
-    @State private var showSharedReleaseConfirm = false
+    @State private var navigateToPaymentStatus = false
+    @State private var showSuccessAnimation = false
 
     private var room: Room? { store.room(withID: roomID) }
     private var actingID: UUID? { store.actingMemberID(in: roomID) }
@@ -155,20 +178,15 @@ struct MemberClaim: View {
             }
         }
         .background(Color(red: 0.90, green: 0.92, blue: 0.99).ignoresSafeArea())
-        .navigationTitle(room?.name ?? "Split bill")
-        .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
-        .toolbar(.hidden, for: .tabBar)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button(action: { dismiss() }) {
-                    Image(systemName: "chevron.left")
-                        .foregroundColor(.black)
-                        .padding(10)
-                        .background(Color.white)
-                        .clipShape(Circle())
-                }
-            }
+        .navigationDestination(isPresented: $navigateToPaymentStatus) {
+            PaymentStatusView(store: store, roomID: roomID)
+        }
+        .fullScreenCover(isPresented: $showSuccessAnimation) {
+            SuccessAnimationView(onFinished: {
+                showSuccessAnimation = false
+                dismiss()
+            })
         }
     }
 
@@ -176,12 +194,31 @@ struct MemberClaim: View {
     private func content(_ room: Room, actingID: UUID) -> some View {
         switch room.state {
         case .open:
-            // The host is still adding and editing bills — prices aren't
-            // final, so no provisional items are shown at all.
             waitingState
         case .claiming, .settling, .closed:
             VStack(spacing: 0) {
-                billList(room, actingID: actingID, interactive: room.state == .claiming)
+                ZStack(alignment: .top) {
+                    billList(room, actingID: actingID, interactive: room.state == .claiming)
+                    
+                    VStack(spacing: 0) {
+                        NavigationHeader(title: "Claim Item")
+                            .padding(.horizontal, 24)
+                            .padding(.top, 10)
+                            .padding(.bottom, 8)
+                            .background(Color(red: 0.90, green: 0.92, blue: 0.99).ignoresSafeArea(edges: .top))
+                        
+                        LinearGradient(
+                            gradient: Gradient(colors: [
+                                Color(red: 0.90, green: 0.92, blue: 0.99),
+                                Color(red: 0.90, green: 0.92, blue: 0.99).opacity(0)
+                            ]),
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .frame(height: 24)
+                    }
+                }
+                
                 footer(room, actingID: actingID)
             }
         }
@@ -215,21 +252,7 @@ struct MemberClaim: View {
                 }
             }
             .padding()
-        }
-        .confirmationDialog(
-            "Release this shared item?",
-            isPresented: $showSharedReleaseConfirm,
-            titleVisibility: .visible
-        ) {
-            Button("Release for Everyone", role: .destructive) {
-                if let target = sharedReleaseTarget {
-                    store.releaseClaim(itemID: target.itemID, billID: target.billID, roomID: roomID)
-                }
-                sharedReleaseTarget = nil
-            }
-            Button("Cancel", role: .cancel) { sharedReleaseTarget = nil }
-        } message: {
-            Text("This item is split with others. Releasing it returns the whole item to unclaimed for all sharers.")
+            .padding(.top, 80) // Push content below the header
         }
     }
 
@@ -267,7 +290,10 @@ struct MemberClaim: View {
                         room: room,
                         actingID: actingID,
                         interactive: interactive,
-                        onToggle: { toggle(item: item, billID: bill.id, actingID: actingID) }
+                        onToggle: { toggle(item: item, billID: bill.id, actingID: actingID) },
+                        onForceAssign: { memberID in
+                            store.forceAssign(itemID: item.id, billID: bill.id, to: memberID, roomID: roomID)
+                        }
                     )
                     .padding(.horizontal)
                     DashedDivider()
@@ -296,12 +322,7 @@ struct MemberClaim: View {
             store.claim(itemID: item.id, billID: billID, roomID: roomID)
         case .claimed(let claims):
             if claims.contains(where: { $0.memberID == actingID }) {
-                if claims.count > 1 {
-                    sharedReleaseTarget = (item.id, billID)
-                    showSharedReleaseConfirm = true
-                } else {
-                    store.releaseClaim(itemID: item.id, billID: billID, roomID: roomID)
-                }
+                store.releaseClaim(itemID: item.id, billID: billID, roomID: roomID)
             } else {
                 store.joinClaim(itemID: item.id, billID: billID, roomID: roomID)
             }
@@ -321,37 +342,38 @@ struct MemberClaim: View {
         let owed = (try? SettlementCalculator.settle(room: room))?
             .settlement(for: actingID)?.totalOwed
 
-        VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 4) {
+        HStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 2) {
                 switch room.state {
                 case .claiming:
                     Text("Your \(room.claims(for: actingID).count) item total · before tax & service")
-                        .font(.subheadline)
+                        .font(.caption)
                         .foregroundColor(.secondary)
                     Text(room.claimedSubtotal(for: actingID).rupiah)
-                        .font(.title.bold())
+                        .font(.title3.bold())
                         .foregroundColor(.primary)
                 default:
                     Text("You owe the host")
-                        .font(.subheadline)
+                        .font(.caption)
                         .foregroundColor(.secondary)
                     Text((owed ?? room.claimedSubtotal(for: actingID)).rupiah)
-                        .font(.title.bold())
+                        .font(.title3.bold())
                         .foregroundColor(.primary)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.vertical, 12)
-
-            if room.state == .settling, let me {
-                switch me.paymentStatus {
-                case .none:
-                    Button(action: { store.markPaid(roomID: roomID) }) {
-                        Text("I've Paid")
+            
+            if room.state == .claiming {
+                if actingID == room.hostMemberID {
+                    Button(action: {
+                        store.advance(roomID: roomID)
+                        navigateToPaymentStatus = true
+                    }) {
+                        Text("Confirmation")
                             .font(.headline)
                             .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
+                            .frame(width: 140)
+                            .padding(.vertical, 14)
                             .background(
                                 LinearGradient(
                                     colors: [Color("Blue1"), Color("Blue2")],
@@ -361,24 +383,82 @@ struct MemberClaim: View {
                             )
                             .clipShape(Capsule())
                     }
-                case .memberMarkedPaid:
-                    paymentStatusLine("Waiting for the host to confirm", color: .orange)
-                case .hostConfirmed:
-                    paymentStatusLine("Settled", color: .green)
+                } else if let me {
+                    if me.paymentStatus == .none {
+                        Button(action: {
+                            store.markPaid(roomID: roomID)
+                            showSuccessAnimation = true
+                        }) {
+                            Text("I've Paid")
+                                .font(.headline)
+                                .foregroundColor(.white)
+                                .frame(width: 140)
+                                .padding(.vertical, 14)
+                                .background(
+                                    LinearGradient(
+                                        colors: [Color("Blue1"), Color("Blue2")],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    )
+                                )
+                                .clipShape(Capsule())
+                        }
+                    } else {
+                        Text(me.paymentStatus == .hostConfirmed ? "Settled" : "Paid")
+                            .font(.subheadline.bold())
+                            .foregroundColor(.green)
+                            .frame(width: 140)
+                            .padding(.vertical, 14)
+                            .background(Color.green.opacity(0.1))
+                            .clipShape(Capsule())
+                    }
+                }
+            } else if room.state == .settling, let me {
+                switch me.paymentStatus {
+                case .none:
+                    Button(action: {
+                        store.markPaid(roomID: roomID)
+                        showSuccessAnimation = true
+                    }) {
+                        Text("I've Paid")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .frame(width: 140)
+                            .padding(.vertical, 14)
+                            .background(
+                                LinearGradient(
+                                    colors: [Color("Blue1"), Color("Blue2")],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
+                            .clipShape(Capsule())
+                    }
+                case .memberMarkedPaid, .hostConfirmed:
+                    Text("Paid")
+                        .font(.subheadline.bold())
+                        .foregroundColor(.green)
+                        .frame(width: 140)
+                        .padding(.vertical, 14)
+                        .background(Color.green.opacity(0.1))
+                        .clipShape(Capsule())
                 }
             } else if room.state == .closed, let me, !me.isHost {
-                paymentStatusLine(
-                    me.paymentStatus == .hostConfirmed ? "Settled" : "Room closed",
-                    color: me.paymentStatus == .hostConfirmed ? .green : .secondary
-                )
+                Text(me.paymentStatus == .hostConfirmed ? "Settled" : "Closed")
+                    .font(.subheadline.bold())
+                    .foregroundColor(me.paymentStatus == .hostConfirmed ? .green : .secondary)
+                    .frame(width: 140)
+                    .padding(.vertical, 14)
+                    .background(Color.gray.opacity(0.1))
+                    .clipShape(Capsule())
             }
         }
         .padding(.horizontal, 24)
-        .padding(.top, 24)
+        .padding(.top, 16)
         .padding(.bottom, 12) // Penyeimbang padding agar menyatu dengan safe area bottom
         .background(
             Color.white
-                .clipShape(RoundedCorner(radius: 32, corners: [.topLeft, .topRight]))
+                .clipShape(RoundedCorner(radius: 24, corners: [.topLeft, .topRight]))
                 .ignoresSafeArea(edges: .bottom)
         )
         .shadow(color: Color.black.opacity(0.06), radius: 10, x: 0, y: -5)

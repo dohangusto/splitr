@@ -7,10 +7,6 @@ struct ClaimingView: View {
     let store: any RoomStoring
     let roomID: UUID
 
-    /// Set when releasing an item shared by several members: warn first.
-    @State private var sharedReleaseTarget: (itemID: UUID, billID: UUID)?
-    @State private var showSharedReleaseConfirm = false
-
     private var room: Room? { store.room(withID: roomID) }
     private var actingID: UUID? { store.actingMemberID(in: roomID) }
     private var actingIsHost: Bool { actingID == room?.hostMemberID }
@@ -63,30 +59,10 @@ struct ClaimingView: View {
             runningTotalCard(room, actingID: actingID)
                 .padding(.horizontal)
         }
-        .confirmationDialog(
-            "Release this shared item?",
-            isPresented: $showSharedReleaseConfirm,
-            titleVisibility: .visible
-        ) {
-            Button("Release for Everyone", role: .destructive) {
-                if let target = sharedReleaseTarget {
-                    store.releaseClaim(itemID: target.itemID, billID: target.billID, roomID: roomID)
-                }
-                sharedReleaseTarget = nil
-            }
-            Button("Cancel", role: .cancel) { sharedReleaseTarget = nil }
-        } message: {
-            Text("This item is split with others. Releasing it returns the whole item to unclaimed for all sharers.")
-        }
     }
 
     private func requestRelease(item: BillItem, billID: UUID) {
-        if case .claimed(let claims) = item.claimState, claims.count > 1 {
-            sharedReleaseTarget = (item.id, billID)
-            showSharedReleaseConfirm = true
-        } else {
-            store.releaseClaim(itemID: item.id, billID: billID, roomID: roomID)
-        }
+        store.releaseClaim(itemID: item.id, billID: billID, roomID: roomID)
     }
 
     /// Persistent info card in the floating layer (`safeAreaBar`), styled
@@ -158,8 +134,18 @@ private struct ClaimItemRow: View {
             if actingIsHost {
                 Menu("Assign to…") {
                     ForEach(room.members) { member in
-                        Button("\(member.avatarEmoji) \(member.displayName)") {
+                        Button {
                             onForceAssign(member.id)
+                        } label: {
+                            Label {
+                                Text(member.displayName)
+                            } icon: {
+                                if let uiImage = UIImage(named: member.avatarEmoji) {
+                                    Image(uiImage: uiImage)
+                                } else {
+                                    Text(member.avatarEmoji)
+                                }
+                            }
                         }
                     }
                 }

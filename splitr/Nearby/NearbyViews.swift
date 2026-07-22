@@ -7,7 +7,7 @@ import SplitBillSync
 /// popping onto a ring as their own avatar bubble. One advertising session
 /// serves every joiner in turn; the radar just keeps filling.
 struct NearbyHostView: View {
-    let store: CloudKitRoomStore
+    let store: any RoomStoring
     let roomID: UUID
     let roomName: String
     let hostDisplayName: String
@@ -45,7 +45,12 @@ struct NearbyHostView: View {
                             centerEmoji: hostEmoji,
                             friends: coordinator.joinedFriends,
                             rangingProgress: rangingProgress(coordinator.phase),
-                            incomingPeerName: incomingPeerName(coordinator)
+                            incomingPeerName: incomingPeerName(coordinator),
+                            onTapIncomingPeer: {
+                                if let name = incomingPeerName(coordinator) {
+                                    coordinator.forceJoin(peerName: name)
+                                }
+                            }
                         )
                         .padding(.horizontal, 12)
                     }
@@ -207,8 +212,12 @@ private struct NearbyRadarView: View {
     let rangingProgress: Double?
     /// Peer connecting/ranging right now, not yet joined.
     let incomingPeerName: String?
+    var onTapIncomingPeer: (() -> Void)? = nil
 
-    @State private var pulse = false
+    @State private var pulse1 = false
+    @State private var pulse2 = false
+    @State private var rotationAngle: Double = 0
+    @State private var isIcon1Active = true
 
     /// Fixed slots so bubbles never jump when new friends arrive:
     /// (angle in degrees, radius as a fraction of the outer ring).
@@ -232,13 +241,42 @@ private struct NearbyRadarView: View {
                         .position(center)
                 }
 
-                // Searching pulse: a ring breathing outward from the host.
+                // Glowing radar circular sweep/shine ring
                 Circle()
-                    .stroke(Color.accentColor.opacity(pulse ? 0 : 0.35), lineWidth: 2)
-                    .frame(width: centerSize, height: centerSize)
-                    .scaleEffect(pulse ? 2.6 : 1)
+                    .stroke(
+                        AngularGradient(
+                            colors: [
+                                Color.accentColor,
+                                Color.accentColor.opacity(0.4),
+                                Color.accentColor.opacity(0.1),
+                                Color.clear,
+                                Color.accentColor.opacity(0.1),
+                                Color.accentColor.opacity(0.4),
+                                Color.accentColor
+                            ],
+                            center: .center
+                        ),
+                        style: StrokeStyle(lineWidth: 3, lineCap: .round)
+                    )
+                    .frame(width: centerSize + 16, height: centerSize + 16)
+                    .rotationEffect(.degrees(rotationAngle))
                     .position(center)
-                    .animation(.easeOut(duration: 2).repeatForever(autoreverses: false), value: pulse)
+                    .shadow(color: Color.accentColor.opacity(0.4), radius: 3)
+
+                // Pulses breathing outward
+                Circle()
+                    .stroke(Color.accentColor.opacity(pulse1 ? 0 : 0.4), lineWidth: 2.5)
+                    .frame(width: centerSize, height: centerSize)
+                    .scaleEffect(pulse1 ? 3.0 : 1.0)
+                    .position(center)
+                    .animation(.easeOut(duration: 2.2).repeatForever(autoreverses: false), value: pulse1)
+
+                Circle()
+                    .stroke(Color.accentColor.opacity(pulse2 ? 0 : 0.35), lineWidth: 1.5)
+                    .frame(width: centerSize, height: centerSize)
+                    .scaleEffect(pulse2 ? 2.3 : 1.0)
+                    .position(center)
+                    .animation(.easeOut(duration: 2.2).repeatForever(autoreverses: false).delay(0.7), value: pulse2)
 
                 // Host at the center; the ranging dwell fills the outline.
                 ZStack {
@@ -257,8 +295,21 @@ private struct NearbyRadarView: View {
                             .rotationEffect(.degrees(-90))
                             .animation(.linear(duration: 0.1), value: rangingProgress)
                     }
-                    Text(centerEmoji)
-                        .font(.system(size: centerSize * 0.5))
+                    
+                    // Blinking Icon1 and Icon2 instead of user profile
+                    ZStack {
+                        Image("Icon1")
+                            .resizable()
+                            .scaledToFit()
+                            .padding(centerSize * 0.18)
+                            .opacity(isIcon1Active ? 1.0 : 0.0)
+                        
+                        Image("Icon2")
+                            .resizable()
+                            .scaledToFit()
+                            .padding(centerSize * 0.18)
+                            .opacity(isIcon1Active ? 0.0 : 1.0)
+                    }
                 }
                 .frame(width: centerSize, height: centerSize)
                 .position(center)
@@ -279,12 +330,27 @@ private struct NearbyRadarView: View {
                             center: center,
                             outerRadius: outerRadius
                         ))
+                        .contentShape(Circle())
+                        .onTapGesture {
+                            onTapIncomingPeer?()
+                        }
                 }
             }
             .animation(.bouncy, value: friends)
         }
         .aspectRatio(1, contentMode: .fit)
-        .onAppear { pulse = true }
+        .onAppear {
+            pulse1 = true
+            pulse2 = true
+            withAnimation(.linear(duration: 3).repeatForever(autoreverses: false)) {
+                rotationAngle = 360
+            }
+            Timer.scheduledTimer(withTimeInterval: 0.6, repeats: true) { _ in
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    isIcon1Active.toggle()
+                }
+            }
+        }
     }
 
     private func position(
@@ -312,8 +378,18 @@ private struct AvatarBubble: View {
                 Circle()
                     .fill(.background)
                     .shadow(color: .black.opacity(0.12), radius: 5, y: 2)
-                Text(emoji)
-                    .font(.system(size: size * 0.52))
+                Group {
+                    if let uiImage = UIImage(named: emoji) {
+                        Image(uiImage: uiImage)
+                            .resizable()
+                            .scaledToFill()
+                    } else {
+                        Text(emoji)
+                            .font(.system(size: size * 0.52))
+                    }
+                }
+                .frame(width: size, height: size)
+                .clipShape(Circle())
             }
             .frame(width: size, height: size)
             Text(name)
@@ -331,12 +407,12 @@ private struct AvatarBubble: View {
 /// The invite link is the standing fallback: reachable from the form for
 /// non-UWB devices, and offered on every proximity failure state.
 struct NearbyJoinView: View {
-    let store: CloudKitRoomStore
+    let store: any RoomStoring
+    var onJoined: ((UUID) -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
     @State private var coordinator: ProximityJoinCoordinator?
-    @State private var name = UserDefaults.standard.string(forKey: "splitr.user_display_name") ?? ""
-    @State private var emoji = UserDefaults.standard.string(forKey: "splitr.user_avatar_emoji") ?? "🙂"
+    @State private var profile = UserProfile.load()
     @State private var started = false
     @State private var showLinkEntry = false
 
@@ -352,17 +428,46 @@ struct NearbyJoinView: View {
             JoinViaLinkView(store: store)
         }
         .sensoryFeedback(.success, trigger: coordinator?.gestureFires ?? 0)
+        .onChange(of: coordinator?.phase) { _, newPhase in
+            if case .joined = newPhase, let roomID = coordinator?.joinedRoomID {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                    onJoined?(roomID)
+                    dismiss()
+                }
+            }
+        }
+        .onAppear {
+            let nameTrimmed = profile.name.trimmingCharacters(in: .whitespaces)
+            if !nameTrimmed.isEmpty {
+                start()
+            }
+        }
         .onDisappear { coordinator?.stop() }
     }
 
-    // MARK: Entry form (name + emoji before searching)
+    // MARK: Entry form (name + profile photo before searching)
 
     private var entryForm: some View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Display name", text: $name)
-                    EmojiPicker(selection: $emoji)
+                    HStack(spacing: 16) {
+                        Image(profile.avatar)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 60, height: 60)
+                            .clipShape(Circle())
+                            .overlay(Circle().stroke(Color(.systemGray5), lineWidth: 1))
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            TextField("Display name", text: $profile.name)
+                                .font(.headline)
+                            Text("Profile Photo")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 4)
                 } header: {
                     Text("You")
                 } footer: {
@@ -382,9 +487,10 @@ struct NearbyJoinView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Find the Host") {
+                        profile.save()
                         start()
                     }
-                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .disabled(profile.name.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
         }
@@ -428,7 +534,7 @@ struct NearbyJoinView: View {
                     joinFailureActions(coordinator)
                 } else {
                     NearbyRadarView(
-                        centerEmoji: emoji,
+                        centerEmoji: profile.avatar,
                         friends: [],
                         rangingProgress: {
                             if case .ranging(let progress) = coordinator.phase { return progress }
@@ -507,7 +613,10 @@ struct NearbyJoinView: View {
                 .padding(.bottom, 8)
             Button {
                 coordinator.stop()
-                coordinator.startJoining(displayName: name, avatarEmoji: emoji)
+                coordinator.startJoining(
+                    displayName: profile.name.trimmingCharacters(in: .whitespaces),
+                    avatarEmoji: profile.avatar
+                )
             } label: {
                 Label("Try Again", systemImage: "arrow.clockwise")
                     .frame(maxWidth: .infinity)
@@ -528,16 +637,13 @@ struct NearbyJoinView: View {
     }
 
     private func start() {
-        let trimmedName = name.trimmingCharacters(in: .whitespaces)
-        UserDefaults.standard.set(trimmedName, forKey: "splitr.user_display_name")
-        UserDefaults.standard.set(emoji, forKey: "splitr.user_avatar_emoji")
-
+        let trimmedName = profile.name.trimmingCharacters(in: .whitespaces)
         let coordinator = ProximityJoinCoordinator(store: store)
         self.coordinator = coordinator
         started = true
         coordinator.startJoining(
             displayName: trimmedName,
-            avatarEmoji: emoji
+            avatarEmoji: profile.avatar
         )
     }
 }
@@ -546,7 +652,7 @@ struct NearbyJoinView: View {
 /// any proximity failure. Accepting the pasted CKShare URL goes through the
 /// exact same path as tapping the link in Messages.
 struct JoinViaLinkView: View {
-    let store: CloudKitRoomStore
+    let store: any RoomStoring
 
     @Environment(\.dismiss) private var dismiss
     @State private var linkText = ""

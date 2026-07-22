@@ -104,9 +104,9 @@ struct PeopleListSheet: View {
             JoinMemberView(store: store, roomID: roomID)
         }
         .sheet(isPresented: $showNearbyHost) {
-            if let cloudStore = AppComposition.cloudStore, let room {
+            if let room {
                 NearbyHostView(
-                    store: cloudStore,
+                    store: store,
                     roomID: roomID,
                     roomName: room.name,
                     hostDisplayName: room.member(withID: room.hostMemberID)?.displayName ?? "Host",
@@ -119,19 +119,14 @@ struct PeopleListSheet: View {
         }
     }
 
-    /// With CloudKit, the host chooses how to add; without it (simulator),
-    /// only manual add exists, so go straight there.
+    /// Allows the host to choose between Nearby Interaction, invite link, or manual entry.
     private func addNewTapped() {
-        if AppComposition.cloudStore != nil {
-            showAddOptions = true
-        } else {
-            showJoinMember = true
-        }
+        showAddOptions = true
     }
 
     private func fetchInviteURL() {
         Task {
-            inviteURL = await AppComposition.cloudStore?.inviteURL(roomID: roomID)
+            inviteURL = await store.inviteURL(roomID: roomID)
         }
     }
 }
@@ -146,18 +141,27 @@ struct PersonRow: View {
     var body: some View {
         HStack(spacing: 16) {
 
-            Text(member.avatarEmoji)
-                .font(.system(size: 26))
-                .frame(width: 48, height: 48)
-                .background(Color(.systemGray6))
-                .clipShape(Circle())
-                .overlay {
-                    Circle()
-                        .stroke(
-                            Color.gray.opacity(0.15),
-                            lineWidth: 1
-                        )
+            Group {
+                if let uiImage = UIImage(named: member.avatarEmoji) {
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    Text(member.avatarEmoji)
+                        .font(.system(size: 26))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(Color(.systemGray6))
                 }
+            }
+            .frame(width: 48, height: 48)
+            .clipShape(Circle())
+            .overlay {
+                Circle()
+                    .stroke(
+                        Color.gray.opacity(0.15),
+                        lineWidth: 1
+                    )
+            }
 
             Text(member.displayName)
                 .font(.system(size: 19, weight: .medium))

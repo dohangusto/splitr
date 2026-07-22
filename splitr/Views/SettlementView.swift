@@ -8,7 +8,6 @@ struct SettlementView: View {
     let store: any RoomStoring
     let roomID: UUID
 
-    @State private var showCloseConfirm = false
     /// Host view: which member's breakdown is expanded (detail behind a tap).
     @State private var expandedMemberID: UUID?
 
@@ -61,17 +60,6 @@ struct SettlementView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .tabBar)
             .toolbar { settlementToolbar(room, actingID: actingID, readOnly: readOnly) }
-            .confirmationDialog(
-                "Close this room?",
-                isPresented: $showCloseConfirm,
-                titleVisibility: .visible
-            ) {
-                Button("Close Room", role: .destructive) {
-                    store.advance(roomID: roomID)
-                }
-            } message: {
-                Text("Closing is final. The room becomes read-only history.")
-            }
         }
     }
 
@@ -101,7 +89,7 @@ struct SettlementView: View {
         if !readOnly, actingIsHost {
             ToolbarItem(placement: .confirmationAction) {
                 Button("Close Room") {
-                    showCloseConfirm = true
+                    store.advance(roomID: roomID)
                 }
                 .disabled(!allConfirmed(room))
             }
@@ -137,20 +125,27 @@ struct SettlementView: View {
     private func memberRow(member: Member, share: MemberSettlement, readOnly: Bool) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text("\(member.avatarEmoji) \(member.displayName)")
+                HStack(spacing: 8) {
+                    Group {
+                        if let uiImage = UIImage(named: member.avatarEmoji) {
+                            Image(uiImage: uiImage)
+                                .resizable()
+                                .scaledToFill()
+                        } else {
+                            Text(member.avatarEmoji)
+                        }
+                    }
+                    .frame(width: 24, height: 24)
+                    .clipShape(Circle())
+                    
+                    Text(member.displayName)
+                }
                 Spacer()
                 Text(share.totalOwed.rupiah).bold()
             }
             HStack {
                 statusLabel(member.paymentStatus)
                 Spacer()
-                if !readOnly, member.paymentStatus != .hostConfirmed {
-                    Button("Confirm received") {
-                        store.confirmPayment(of: member.id, roomID: roomID)
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                }
             }
         }
         .contentShape(Rectangle())
@@ -174,9 +169,9 @@ struct SettlementView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         case .memberMarkedPaid:
-            Label("Marked paid", systemImage: "checkmark.circle")
+            Label("Paid", systemImage: "checkmark.circle.fill")
                 .font(.caption)
-                .foregroundStyle(.orange)
+                .foregroundStyle(.green)
         case .hostConfirmed:
             Label("Settled", systemImage: "checkmark.circle.fill")
                 .font(.caption)

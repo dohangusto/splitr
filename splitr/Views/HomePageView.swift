@@ -11,6 +11,9 @@ struct HomePageView: View {
     @State private var hostingIssue: String?
     @State private var profile = UserProfile.load()
     
+    @State private var showScanFlow = false
+    @State private var activeScanRoomID: UUID?
+    
     @State private var selectedTab: HomeTab = .home
     
     @State private var searchText = ""
@@ -53,8 +56,21 @@ struct HomePageView: View {
             CreateRoomView(store: store)
         }
         .sheet(isPresented: $showJoinNearby) {
-            if let cloudStore = AppComposition.cloudStore {
-                NearbyJoinView(store: cloudStore)
+            NearbyJoinView(store: store) { roomID in
+                roomsPath.append(roomID)
+            }
+        }
+        .sheet(isPresented: $showScanFlow) {
+            if let roomID = activeScanRoomID {
+                ReceiptScanFlow(store: store, roomID: roomID)
+            }
+        }
+        .onChange(of: showScanFlow) { oldValue, newValue in
+            if !newValue, let roomID = activeScanRoomID {
+                if let room = store.room(withID: roomID), !room.bills.isEmpty {
+                    roomsPath.append(roomID)
+                }
+                activeScanRoomID = nil
             }
         }
         .alert(
@@ -99,7 +115,10 @@ struct HomePageView: View {
                 RoomRootView(store: store, roomID: roomID)
             }
             .navigationDestination(isPresented: $showProfile) {
-                ProfileView(profile: $profile)
+                ProfileView(profile: $profile) {
+                    store.resetAllData()
+                    profile = UserProfile.load()
+                }
             }
         }
     }
@@ -373,15 +392,30 @@ struct HomePageView: View {
     private func actionLabel(for room: Room) -> String {
         switch room.state {
         case .open: return "Start Claiming"
-        case .claiming: return "Claiming"
-        case .settling: return "Settle Up"
+        case .claiming, .settling: return "Claimed"
         case .closed: return "Closed"
         }
     }
 
     private func createRoomTapped() {
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateStyle = .medium
+        dateFormatter.timeStyle = .none
+        let dateString = dateFormatter.string(from: Date())
+        let defaultRoomName = "Bill \(dateString)"
+        
+        let profile = UserProfile.load()
+        let hostName = profile.name.isEmpty ? "Host" : profile.name
+        let hostEmoji = profile.avatar
+        
         guard let cloudStore = AppComposition.cloudStore else {
-            showCreateRoom = true
+            let newRoom = store.createRoom(
+                named: defaultRoomName,
+                hostName: hostName,
+                hostEmoji: hostEmoji
+            )
+            activeScanRoomID = newRoom.id
+            showScanFlow = true
             return
         }
         isCheckingHosting = true
@@ -391,19 +425,25 @@ struct HomePageView: View {
             if let issue {
                 hostingIssue = issue
             } else {
-                showCreateRoom = true
+                let newRoom = store.createRoom(
+                    named: defaultRoomName,
+                    hostName: hostName,
+                    hostEmoji: hostEmoji
+                )
+                activeScanRoomID = newRoom.id
+                showScanFlow = true
             }
         }
     }
 
     private func joinRoomTapped() {
-        if AppComposition.cloudStore != nil {
-            showJoinNearby = true
-        } else {
-            store.alert = StoreAlert(
-                message: "Joining a room needs a physical iPhone signed into iCloud. On the simulator, explore the demo rooms instead."
-            )
-        }
+        #if targetEnvironment(simulator)
+        store.alert = StoreAlert(
+            message: "Joining a room needs a physical iPhone. On the simulator, explore the demo rooms instead."
+        )
+        #else
+        showJoinNearby = true
+        #endif
     }
 }
 
