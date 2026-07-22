@@ -24,7 +24,7 @@ struct SplitBillNameCard: View {
                 .font(.headline)
                 .foregroundStyle(.secondary)
 
-            TextField("Masukkan nama split bill", text: $billName)
+            TextField("Enter bill name", text: $billName)
                 .font(.system(.title2, weight: .semibold))
                 .foregroundStyle(.primary)
                 .textFieldStyle(.plain)

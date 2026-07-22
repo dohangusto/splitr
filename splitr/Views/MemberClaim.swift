@@ -73,6 +73,31 @@ private struct MenuItemRow: View {
     /// The checkbox is self-only: checked means "I'm on this item".
     private var iAmIn: Bool { item.involves(actingID) }
 
+    /// Everyone currently on this item (claimers, or the force-assignee).
+    private var claimerIDs: [UUID] { item.claimState.claimerIDs }
+
+    /// A small round avatar for one claimer, ringed so overlapping faces read
+    /// as distinct.
+    @ViewBuilder
+    private func claimerAvatar(_ id: UUID) -> some View {
+        let member = room.member(withID: id)
+        Group {
+            if let name = member?.avatarEmoji, let uiImage = UIImage(named: name) {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Text(member?.avatarEmoji ?? "?")
+                    .font(.system(size: 11))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color(.systemGray5))
+            }
+        }
+        .frame(width: 22, height: 22)
+        .clipShape(Circle())
+        .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 1.5))
+    }
+
     /// Exclusive item host assignment — the member can't act on it.
     /// Shared items stay joinable by any member so multiple users can claim.
     private var locked: Bool {
@@ -111,7 +136,14 @@ private struct MenuItemRow: View {
             }
 
             //who's in + price
-            HStack {
+            HStack(spacing: 8) {
+                // Faces of who claimed this item — a glanceable signal of
+                // ownership that reinforces the status text beside it.
+                if !claimerIDs.isEmpty {
+                    HStack(spacing: -6) {
+                        ForEach(claimerIDs.prefix(4), id: \.self) { claimerAvatar($0) }
+                    }
+                }
                 if let statusText {
                     Text(statusText)
                         .font(.caption)
@@ -179,6 +211,10 @@ struct MemberClaim: View {
         }
         .background(Color("PrimaryBackground").ignoresSafeArea())
         .navigationBarBackButtonHidden(true)
+        // Claiming is a focused session: no bottom tab bar and no system nav
+        // bar competing with the custom header for attention.
+        .toolbar(.hidden, for: .tabBar)
+        .toolbar(.hidden, for: .navigationBar)
         .navigationDestination(isPresented: $navigateToPaymentStatus) {
             PaymentStatusView(store: store, roomID: roomID)
         }
@@ -300,12 +336,14 @@ struct MemberClaim: View {
                         .padding(.horizontal)
                 }
 
-                // MARK: summary rows — Core's per-bill amounts, never
-                // recomputed here. (No discount row: not a Core concept yet.)
+                // MARK: summary rows — Core's per-bill amounts, never recomputed here.
                 VStack(spacing: 12) {
-                    summaryRow(label: "Pajak", value: bill.taxTotal)
-                    summaryRow(label: "Servis", value: bill.serviceChargeTotal)
-                    summaryRow(label: "Subtotal", value: bill.grandTotal, weight: .semibold)
+                    summaryRow(label: "Tax", value: bill.taxTotal)
+                    summaryRow(label: "Service", value: bill.serviceChargeTotal)
+                    if bill.discountTotal > 0 {
+                        summaryRow(label: "Discount", value: -bill.discountTotal)
+                    }
+                    summaryRow(label: "Total", value: bill.grandTotal, weight: .semibold)
                 }
                 .padding()
             }

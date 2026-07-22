@@ -63,7 +63,7 @@ struct PaymentStatusView: View {
                                 DashedLine()
 
                                 // MARK: Your Items
-                                Text("Your item’s")
+                                Text("Your items")
                                     .font(.system(.subheadline))
                                     .foregroundStyle(.secondary)
                                     .padding(.top, 20)

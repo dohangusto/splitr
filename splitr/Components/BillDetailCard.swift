@@ -84,12 +84,12 @@ struct BillDetailCard: View {
 
             VStack(spacing: 24) {
 
-                SummaryRow(title: "Pajak", value: bill.taxTotal.rupiah)
+                SummaryRow(title: "Tax", value: bill.taxTotal.rupiah)
 
-                SummaryRow(title: "Servis", value: bill.serviceChargeTotal.rupiah)
+                SummaryRow(title: "Service", value: bill.serviceChargeTotal.rupiah)
 
                 if bill.discountTotal > 0 {
-                    SummaryRow(title: "Diskon", value: "-" + bill.discountTotal.rupiah)
+                    SummaryRow(title: "Discount", value: "-" + bill.discountTotal.rupiah)
                 }
 
                 SummaryRow(title: "Total", value: bill.grandTotal.rupiah)

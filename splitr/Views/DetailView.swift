@@ -248,12 +248,10 @@ struct DetailView: View {
         case .open:
             EmptyView()
         case .claiming:
-            destinationCard("Items & Claims", systemImage: "checklist") {
-                // The host claims their own items through the same surface a
-                // member uses — MemberClaim is role-aware (host force-assign
-                // stays available inside it), so there's one claiming view.
-                MemberClaim(store: store, roomID: roomID)
-            }
+            // The claim entry is not a mid-scroll card here — a host scanning
+            // the bill has no reason to look for it under the receipt. It's
+            // surfaced as a bottom accessory instead (see `claimAccessory`).
+            EmptyView()
         case .settling:
             destinationCard("Settlement", systemImage: "creditcard") {
                 SettlementView(store: store, roomID: roomID)
@@ -292,31 +290,20 @@ struct DetailView: View {
     @ViewBuilder
     private func pinnedAction(_ room: Room) -> some View {
         if room.state != .closed {
-            VStack {
+            VStack(spacing: 12) {
+                // While claiming, the host's own claim entry is the bottom
+                // accessory — prominent and content-aware — not a buried card.
+                if room.state == .claiming {
+                    claimAccessory(room)
+                }
+
                 // Settling can't complete while items have no owner. Rather
                 // than a dead, disabled "Close Room" button, say what's wrong
                 // and offer the one action that fixes it — reopen claiming.
                 if room.state == .settling, unclaimedCount(room) > 0 {
                     reopenClaimingPrompt(room)
                 } else {
-                    Button {
-                        showAdvanceConfirm = true
-                    } label: {
-                        Text(room.state.advanceLabel)
-                            .font(.headline)
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity)
-                            .frame(minHeight: 56)
-                            .background(
-                                Color("SplitAirBlue")
-                            )
-                            .clipShape(
-                                Capsule()
-                            )
-                            .opacity(advanceDisabled(room) ? 0.4 : 1)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(advanceDisabled(room))
+                    advanceButton(room)
                 }
             }
             .padding(.horizontal, 20)
@@ -324,6 +311,61 @@ struct DetailView: View {
             .padding(.bottom, 12)
             .background(Color(.secondarySystemGroupedBackground))
         }
+    }
+
+    /// The host's state-advance button (Start Claiming / Close Claiming / …).
+    private func advanceButton(_ room: Room) -> some View {
+        Button {
+            showAdvanceConfirm = true
+        } label: {
+            Text(room.state.advanceLabel)
+                .font(.headline)
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: 56)
+                .background(Color("SplitAirBlue"))
+                .clipShape(Capsule())
+                .opacity(advanceDisabled(room) ? 0.4 : 1)
+        }
+        .buttonStyle(.plain)
+        .disabled(advanceDisabled(room))
+    }
+
+    /// Bottom accessory (claiming only): the host's route into their own
+    /// claim surface, with a live "so far" total so it reads as active work.
+    private func claimAccessory(_ room: Room) -> some View {
+        let claimedSoFar = store.actingMemberID(in: roomID)
+            .map { room.claimedSubtotal(for: $0) } ?? 0
+        return NavigationLink {
+            MemberClaim(store: store, roomID: roomID)
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "checklist")
+                    .font(.title3)
+                    .foregroundStyle(Color("SplitAirBlue"))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Claim your items")
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                    Text("\(claimedSoFar.rupiah) claimed so far")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity)
+            .background(Color("PrimaryBackground"))
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(Color("SplitAirBlue").opacity(0.35), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     /// Number of items in the room with no owner — what blocks settlement.
