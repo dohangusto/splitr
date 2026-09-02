@@ -13,12 +13,15 @@ struct DetailView: View {
 
     let store: any RoomStoring
     let roomID: UUID
+    @Environment(\.dismiss) private var dismiss
 
     @State private var showingPeopleList = false
     @State private var showScanReceipt = false
     @State private var showAddBill = false
     @State private var selectedPhotoBill: Bill?
     @State private var navigateToClaiming = false
+    @State private var showDeleteConfirmation = false
+    @State private var inviteURL: URL?
 
     private var room: Room? { store.room(withID: roomID) }
 
@@ -116,6 +119,21 @@ struct DetailView: View {
         .navigationDestination(isPresented: $navigateToClaiming) {
             MemberClaim(store: store, roomID: roomID)
         }
+        .sheet(item: $inviteURL) { url in
+            ShareLinkSheet(url: url, roomName: room.name)
+        }
+        .confirmationDialog(
+            "Are you sure you want to delete this room?",
+            isPresented: $showDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Room", role: .destructive) {
+                deleteRoom()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(deleteWarning(room))
+        }
         .onAppear {
             // no-op kept to preserve view structure
         }
@@ -127,6 +145,15 @@ struct DetailView: View {
     /// the room is live, delete always — a finished room still needs cleanup.
     private func manageMenu(_ room: Room) -> some View {
         Menu {
+            if room.state != .closed {
+                Button {
+                    Task {
+                        inviteURL = await store.inviteURL(roomID: roomID)
+                    }
+                } label: {
+                    Label("Share Room Link", systemImage: "link")
+                }
+            }
             if room.state == .settling {
                 Button {
                     store.rollbackToClaiming(roomID: roomID)
@@ -157,7 +184,7 @@ struct DetailView: View {
                 }
             }
             Button(role: .destructive) {
-                deleteRoom()
+                showDeleteConfirmation = true
             } label: {
                 Label("Delete Room", systemImage: "trash")
             }
@@ -184,12 +211,8 @@ struct DetailView: View {
     }
 
     private func deleteRoom() {
-        // Milestone 4: tear down the CKShare / record zone and revoke every
-        // member's access. Until that ships, deleting locally would strand
-        // members on the share — so the entry point stops here, honestly.
-        store.alert = StoreAlert(
-            message: "Deleting a room arrives with cloud sync teardown (milestone 4). This room hasn't been changed."
-        )
+        store.deleteRoom(roomID: roomID)
+        dismiss()
     }
 
     // MARK: - State-dependent pieces

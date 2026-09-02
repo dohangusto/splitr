@@ -1,41 +1,31 @@
 import SwiftUI
+import UIKit
 
 extension URL: @retroactive Identifiable {
     public var id: String { absoluteString }
 }
 
-/// Presents a room's CKShare invitation URL for sending to friends.
+/// Native iOS system share sheet (UIActivityViewController) directly showing AirDrop, Messages, WhatsApp, Copy, etc.
+struct ShareActivityView: UIViewControllerRepresentable {
+    let activityItems: [Any]
+    let applicationActivities: [UIActivity]? = nil
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(
+            activityItems: activityItems,
+            applicationActivities: applicationActivities
+        )
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+/// Stand-in for direct iOS share sheet presentation with a URL
 struct ShareLinkSheet: View {
     let url: URL
-    let roomName: String
-
-    @Environment(\.dismiss) private var dismiss
+    var roomName: String = ""
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 16) {
-                Image(systemName: "person.2.wave.2")
-                    .font(.largeTitle)
-                    .foregroundStyle(.tint)
-                Text("Invite friends to \(roomName)")
-                    .font(.headline)
-                Text("Anyone who opens this link joins the room and can claim their own items.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-            .padding()
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    ShareLink(item: url) {
-                        Label("Send Invite Link", systemImage: "square.and.arrow.up")
-                    }
-                }
-            }
-        }
-        .presentationDetents([.medium])
+        ShareActivityView(activityItems: [url])
     }
 }

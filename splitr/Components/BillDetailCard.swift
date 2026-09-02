@@ -116,8 +116,8 @@ struct BillDetailCard: View {
                 .padding(.vertical, 16)
 
             VStack(spacing: 24) {
-                SummaryRow(title: "Pajak", value: bill.taxTotal.rupiah)
-                SummaryRow(title: "Servis", value: bill.serviceChargeTotal.rupiah)
+                SummaryRow(title: "Tax", value: bill.taxTotal.rupiah)
+                SummaryRow(title: "Service", value: bill.serviceChargeTotal.rupiah)
                 SummaryRow(title: "Subtotal", value: bill.grandTotal.rupiah)
             }
 

@@ -90,6 +90,25 @@ final class CloudKitRoomStore: RoomStoring {
         }
     }
 
+    func joinFromInvite(named name: String, emoji: String, roomID: UUID) {
+        guard room(withID: roomID) != nil else { return }
+        let defaults = UserDefaults.standard
+        let key = "splitr.invite_member.\(roomID.uuidString)"
+        let memberID = defaults.string(forKey: key).flatMap(UUID.init) ?? UUID()
+        defaults.set(memberID.uuidString, forKey: key)
+        let member = Member(id: memberID, displayName: name, avatarEmoji: emoji)
+        if self.room(withID: roomID)?.member(withID: memberID) != nil {
+            setActingMember(memberID, in: roomID)
+            return
+        }
+        mutate(roomID) { room, _ in
+            try room.join(member)
+        }
+        if self.room(withID: roomID)?.member(withID: memberID) != nil {
+            setActingMember(memberID, in: roomID)
+        }
+    }
+
     func renameRoom(roomID: UUID, to newName: String) {
         mutate(roomID) { room, _ in
             room.name = newName
@@ -143,6 +162,12 @@ final class CloudKitRoomStore: RoomStoring {
     func forceAssign(itemID: UUID, billID: UUID, to memberID: UUID, roomID: UUID) {
         mutate(roomID, persist: .claim(billID: billID, itemID: itemID)) { room, actor in
             try room.forceAssign(itemID: itemID, in: billID, to: memberID, by: actor)
+        }
+    }
+
+    func toggleClaim(itemID: UUID, billID: UUID, for memberID: UUID, roomID: UUID) {
+        mutate(roomID, persist: .claim(billID: billID, itemID: itemID)) { room, _ in
+            try room.toggleClaim(itemID: itemID, in: billID, for: memberID)
         }
     }
 
@@ -206,6 +231,10 @@ final class CloudKitRoomStore: RoomStoring {
         actingByRoom.removeAll()
         pendingPushes.forEach { $0.cancel() }
         pendingPushes = []
+    }
+
+    func deleteRoom(roomID: UUID) {
+        rooms.removeAll { $0.id == roomID }
     }
 
     /// Waits (with periodic refetches) until a just-joined room syncs in.

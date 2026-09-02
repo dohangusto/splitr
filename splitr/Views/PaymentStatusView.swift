@@ -8,6 +8,18 @@
 import SwiftUI
 import SplitBillCore
 
+// MARK: - Member Breakdown Model
+
+struct MemberBreakdown: Identifiable {
+    var id: UUID { member.id }
+    let member: Member
+    let items: [(name: String, portionText: String, price: Int)]
+    let subtotal: Int
+    let taxShare: Int
+    let serviceShare: Int
+    let totalOwed: Int
+}
+
 // MARK: - Payment Status View
 
 struct PaymentStatusView: View {
@@ -16,10 +28,68 @@ struct PaymentStatusView: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var showSuccessAnimation = false
+    @State private var shareableImage: UIImage?
+    @State private var showShareSheet = false
 
     private var room: Room? { store.room(withID: roomID) }
     private var actingID: UUID? { store.actingMemberID(in: roomID) }
     private var isHost: Bool { room?.hostMemberID == actingID }
+
+    private var memberBreakdowns: [MemberBreakdown] {
+        guard let room else { return [] }
+        let settlement = try? SettlementCalculator.settle(room: room)
+
+        return room.members.map { member in
+            var claimedItems: [(name: String, portionText: String, price: Int)] = []
+            for bill in room.bills {
+                for item in bill.items {
+                    switch item.claimState {
+                    case .claimed(let claims):
+                        if let c = claims.first(where: { $0.memberID == member.id }) {
+                            let portionText = c.portion == .one ? "1x" : "\(c.portion)x (shared)"
+                            let portionPrice = (c.portion * item.unitPrice).flooredValue
+                            claimedItems.append((name: item.name, portionText: portionText, price: portionPrice))
+                        }
+                    case .forceAssigned(let id):
+                        if id == member.id {
+                            claimedItems.append((name: item.name, portionText: "1x", price: item.unitPrice))
+                        }
+                    case .unclaimed:
+                        break
+                    }
+                }
+            }
+
+            let share = settlement?.settlement(for: member.id)
+            let estimate = room.estimatedClaimSettlement(for: member.id)
+
+            let subtotal = share?.subtotal ?? estimate.subtotal
+            let taxShare = share?.taxShare ?? estimate.taxShare
+            let serviceShare = share?.serviceShare ?? estimate.serviceShare
+            let totalOwed = share?.totalOwed ?? estimate.total
+
+            return MemberBreakdown(
+                member: member,
+                items: claimedItems,
+                subtotal: subtotal,
+                taxShare: taxShare,
+                serviceShare: serviceShare,
+                totalOwed: totalOwed
+            )
+        }
+    }
+
+    @MainActor
+    private func shareReceiptAsImage() {
+        guard let room else { return }
+        let renderView = TicketReceiptRenderView(room: room, breakdowns: memberBreakdowns)
+        let renderer = ImageRenderer(content: renderView)
+        renderer.scale = 3.0 // Ultra-crisp 3x Retina
+        if let uiImage = renderer.uiImage {
+            shareableImage = uiImage
+            showShareSheet = true
+        }
+    }
 
     var body: some View {
         ZStack {
@@ -34,12 +104,26 @@ struct PaymentStatusView: View {
             if let room {
                 // MARK: Main Content
                 VStack(spacing: 0) {
-                    // Custom Navigation Header
-                    NavigationHeader(
-                        title: "Payment Status"
-                    )
+                    // Custom Navigation Header with Share Button
+                    ZStack(alignment: .trailing) {
+                        NavigationHeader(
+                            title: "Payment Status"
+                        )
+
+                        Button {
+                            shareReceiptAsImage()
+                        } label: {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(.black)
+                                .frame(width: 44, height: 44)
+                                .background(Color.white)
+                                .clipShape(Circle())
+                                .shadow(color: .black.opacity(0.08), radius: 6, y: 2)
+                        }
+                    }
                     .padding(.horizontal, 24)
-                    .padding(.bottom, 28)
+                    .padding(.bottom, 20)
 
                     // MARK: Receipt Card ScrollView
                     ScrollView(
@@ -54,111 +138,64 @@ struct PaymentStatusView: View {
                                 // Invoice Title
                                 DashedLine()
 
-                                Text(room.name)
-                                    .font(
-                                        .system(
-                                            size: 14,
-                                            weight: .semibold,
-                                            design: .monospaced
-                                        )
-                                    )
-                                    .frame(
-                                        maxWidth: .infinity,
-                                        alignment: .center
-                                    )
-                                    .padding(.vertical, 16)
+                                VStack(spacing: 4) {
+                                    Text(room.name)
+                                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                                        .foregroundStyle(.primary)
+
+                                    let totalAmount = room.bills.map(\.grandTotal).reduce(0, +)
+                                    Text("Grand Total: \(totalAmount.rupiah)")
+                                        .font(.system(size: 14, weight: .semibold))
+                                        .foregroundStyle(Color("Blue2"))
+                                }
+                                .frame(maxWidth: .infinity, alignment: .center)
+                                .padding(.vertical, 16)
 
                                 DashedLine()
 
-                                // MARK: Your Items
-                                Text("Your item’s")
-                                    .font(.system(size: 15))
-                                    .foregroundStyle(.secondary)
-                                    .padding(.top, 20)
+                                // MARK: Members Breakdown List
+                                VStack(alignment: .leading, spacing: 20) {
+                                    Text("Member Breakdown")
+                                        .font(.system(size: 16, weight: .bold))
+                                        .foregroundStyle(.primary)
+                                        .padding(.top, 16)
 
-                                VStack(spacing: 20) {
-                                    let allItems = room.bills.flatMap(\.items)
-                                    if allItems.isEmpty {
-                                        Text("No items in receipt")
-                                            .font(.subheadline)
-                                            .foregroundStyle(.secondary)
-                                    } else {
-                                        ForEach(allItems) { item in
-                                            ReceiptItemRow(
-                                                quantity: 1,
-                                                name: item.name,
-                                                price: item.unitPrice.rupiah,
-                                                claimersText: claimersText(for: item, in: room)
-                                            )
-                                        }
-                                    }
-                                }
-                                .padding(.top, 18)
-
-                                // MARK: Total
-                                HStack {
-                                    Text("Total")
-                                        .font(
-                                            .system(
-                                                size: 17,
-                                                weight: .bold
-                                            )
-                                        )
-
-                                    Spacer()
-
-                                    let totalAmount = room.bills.map(\.grandTotal).reduce(0, +)
-                                    Text(totalAmount.rupiah)
-                                        .font(
-                                            .system(
-                                                size: 17,
-                                                weight: .bold
-                                            )
-                                        )
-                                }
-                                .padding(.top, 30)
-
-                                // MARK: Payment Status Title
-                                VStack(
-                                    alignment: .leading,
-                                    spacing: 6
-                                ) {
-                                    Text("Payment Status")
-                                        .font(
-                                            .system(
-                                                size: 18,
-                                                weight: .semibold
-                                            )
-                                        )
-
-                                    Text("Track everyone's payment.")
-                                        .font(.system(size: 15))
-                                        .foregroundStyle(.secondary)
-                                }
-                                .padding(.top, 32)
-
-                                // MARK: Members List
-                                VStack(spacing: 0) {
-                                    ForEach(
-                                        Array(room.members.enumerated()),
-                                        id: \.element.id
-                                    ) { index, member in
-                                        PaymentMemberRow(
-                                            member: member,
+                                    ForEach(memberBreakdowns) { detail in
+                                        MemberBreakdownCard(
+                                            detail: detail,
                                             isHostView: isHost,
                                             onTogglePaid: {
-                                                if isHost && !member.isHost {
-                                                    store.confirmPayment(of: member.id, roomID: roomID)
+                                                if isHost && !detail.member.isHost {
+                                                    store.confirmPayment(of: detail.member.id, roomID: roomID)
                                                 }
                                             }
                                         )
 
-                                        if index < room.members.count - 1 {
-                                            Divider().opacity(0.5)
+                                        if detail.id != memberBreakdowns.last?.id {
+                                            Divider().opacity(0.6)
                                         }
                                     }
                                 }
-                                .padding(.top, 20)
+                                .padding(.top, 4)
+
+                                // MARK: Share Image Button in Ticket
+                                Button {
+                                    shareReceiptAsImage()
+                                } label: {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "photo.on.rectangle.angled")
+                                            .font(.system(size: 14, weight: .semibold))
+                                        Text("Share Receipt Image")
+                                            .font(.system(size: 14, weight: .semibold))
+                                    }
+                                    .foregroundColor(Color("Blue2"))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                                    .background(Color("Blue2").opacity(0.1))
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                                }
+                                .buttonStyle(.plain)
+                                .padding(.top, 24)
                             }
                         }
                         .padding(.horizontal, 24)
@@ -174,7 +211,7 @@ struct PaymentStatusView: View {
                                 }
                                 showSuccessAnimation = true
                             } label: {
-                                Text(room.state == .closed ? "Done" : "Make as done")
+                                Text(room.state == .closed ? "Done" : "Mark as done")
                                     .font(
                                         .system(
                                             size: 17,
@@ -209,7 +246,6 @@ struct PaymentStatusView: View {
                             if let actingID, let me = room.member(withID: actingID) {
                                 if me.paymentStatus == .none {
                                     Button {
-                                        store.markPaid(roomID: roomID)
                                         showSuccessAnimation = true
                                     } label: {
                                         Text("I've Paid")
@@ -240,7 +276,7 @@ struct PaymentStatusView: View {
                         }
                     }
                     .padding(.horizontal, 24)
-                    .padding(.top, 24)
+                    .padding(.top, 20)
                     .padding(.bottom, 24)
                     .background(
                         Color.white
@@ -260,113 +296,229 @@ struct PaymentStatusView: View {
         .navigationBarBackButtonHidden(true)
         .fullScreenCover(isPresented: $showSuccessAnimation) {
             SuccessAnimationView(onFinished: {
+                store.markPaid(roomID: roomID)
                 showSuccessAnimation = false
                 dismiss()
             })
         }
-    }
-
-    private func claimersText(for item: BillItem, in room: Room) -> String {
-        switch item.claimState {
-        case .unclaimed:
-            return "Unclaimed"
-        case .claimed(let claims):
-            let names = claims.compactMap { room.member(withID: $0.memberID)?.displayName }
-            if names.isEmpty { return "Unclaimed" }
-            return "Claimed by " + names.joined(separator: ", ")
-        case .forceAssigned(let memberID):
-            let name = room.member(withID: memberID)?.displayName ?? "someone"
-            return "Assigned to " + name
+        .sheet(isPresented: $showShareSheet) {
+            if let shareableImage {
+                ActivityView(activityItems: [shareableImage])
+            }
         }
     }
 }
 
-// MARK: - Receipt Item Row
+// MARK: - Rendered Ticket View for Image Export
 
-private struct ReceiptItemRow: View {
-    let quantity: Int
-    let name: String
-    let price: String
-    let claimersText: String
+private struct TicketReceiptRenderView: View {
+    let room: Room
+    let breakdowns: [MemberBreakdown]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 16) {
-                Text("x\(quantity)")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 25, alignment: .leading)
+        VStack(spacing: 0) {
+            VStack(spacing: 16) {
+                // Header Logo / Branding
+                HStack(spacing: 8) {
+                    Image(systemName: "receipt.fill")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(Color("Blue2"))
+                    Text("Splitr")
+                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                        .foregroundColor(Color("Blue2"))
+                }
+                .padding(.top, 4)
 
-                Text(name)
-                    .font(
-                        .system(
-                            size: 16,
-                            weight: .medium
-                        )
-                    )
+                DashedLine()
 
-                Spacer()
+                // Room Name & Grand Total
+                VStack(spacing: 4) {
+                    Text(room.name)
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .foregroundColor(.primary)
 
-                Text(price)
-                    .font(
-                        .system(
-                            size: 16,
-                            weight: .medium
-                        )
-                    )
+                    let totalAmount = room.bills.map(\.grandTotal).reduce(0, +)
+                    Text("Grand Total: \(totalAmount.rupiah)")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(Color("Blue2"))
+                }
+
+                DashedLine()
+
+                // Member Breakdowns
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Member Breakdown")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(.primary)
+
+                    ForEach(breakdowns) { detail in
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                HStack(spacing: 6) {
+                                    if let uiImage = UIImage(named: detail.member.avatarEmoji) {
+                                        Image(uiImage: uiImage)
+                                            .resizable()
+                                            .scaledToFill()
+                                            .frame(width: 24, height: 24)
+                                            .clipShape(Circle())
+                                    } else {
+                                        Text(detail.member.avatarEmoji)
+                                            .font(.system(size: 14))
+                                    }
+
+                                    Text(detail.member.displayName)
+                                        .font(.system(size: 15, weight: .bold))
+                                        .foregroundColor(.primary)
+
+                                    if detail.member.isHost {
+                                        Text("Host")
+                                            .font(.system(size: 10, weight: .bold))
+                                            .foregroundColor(Color("Blue2"))
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .background(Color("Blue2").opacity(0.12))
+                                            .clipShape(Capsule())
+                                    }
+                                }
+
+                                Spacer()
+
+                                let isPaid = detail.member.isHost || detail.member.paymentStatus == .hostConfirmed || detail.member.paymentStatus == .memberMarkedPaid
+                                Text(isPaid ? "Paid" : "Unpaid")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(isPaid ? .green : .orange)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .background((isPaid ? Color.green : Color.orange).opacity(0.12))
+                                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                            }
+
+                            if detail.items.isEmpty {
+                                Text("No items claimed")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .padding(.leading, 28)
+                            } else {
+                                VStack(spacing: 4) {
+                                    ForEach(Array(detail.items.enumerated()), id: \.offset) { _, item in
+                                        HStack {
+                                            Text("\(item.portionText) \(item.name)")
+                                                .font(.system(size: 13))
+                                                .foregroundColor(.primary)
+                                            Spacer()
+                                            Text(item.price.rupiah)
+                                                .font(.system(size: 13, weight: .medium))
+                                                .foregroundColor(.secondary)
+                                        }
+                                    }
+                                }
+                                .padding(.leading, 28)
+                            }
+
+                            if detail.taxShare > 0 || detail.serviceShare > 0 {
+                                HStack {
+                                    Text("Items: \(detail.subtotal.rupiah)")
+                                    if detail.serviceShare > 0 {
+                                        Text("· Svc: \(detail.serviceShare.rupiah)")
+                                    }
+                                    if detail.taxShare > 0 {
+                                        Text("· Tax: \(detail.taxShare.rupiah)")
+                                    }
+                                }
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                                .padding(.leading, 28)
+                            }
+
+                            HStack {
+                                Spacer()
+                                Text("Total: \(detail.totalOwed.rupiah)")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundColor(Color("Blue2"))
+                            }
+                        }
+
+                        if detail.id != breakdowns.last?.id {
+                            Divider().opacity(0.6)
+                        }
+                    }
+                }
+
+                DashedLine()
+
+                // Watermark footer
+                HStack(spacing: 4) {
+                    Text("Split easily with")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                    Text("Splitr")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(Color("Blue2"))
+                    Text("🚀")
+                        .font(.system(size: 12))
+                }
+                .padding(.bottom, 6)
             }
-
-            Text(claimersText)
-                .font(.system(size: 12))
-                .foregroundStyle(claimersText == "Unclaimed" ? Color.red.opacity(0.8) : Color.secondary)
-                .padding(.leading, 41)
+            .padding(24)
         }
+        .frame(width: 360)
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .padding(16)
+        .background(Color(red: 237 / 255, green: 242 / 255, blue: 255 / 255))
     }
 }
 
-// MARK: - Payment Member Row
+// MARK: - Activity View (Share Sheet)
 
-private struct PaymentMemberRow: View {
-    let member: Member
+private struct ActivityView: UIViewControllerRepresentable {
+    let activityItems: [Any]
+    let applicationActivities: [UIActivity]? = nil
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(
+            activityItems: activityItems,
+            applicationActivities: applicationActivities
+        )
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+// MARK: - Member Breakdown Card
+
+private struct MemberBreakdownCard: View {
+    let detail: MemberBreakdown
     let isHostView: Bool
     let onTogglePaid: () -> Void
 
     var body: some View {
-        Button {
-            onTogglePaid()
-        } label: {
-            HStack(spacing: 16) {
-                // Avatar
-                if let uiImage = UIImage(named: member.avatarEmoji) {
+        VStack(alignment: .leading, spacing: 10) {
+            // Member Header (Avatar, Name, Status)
+            HStack(spacing: 12) {
+                if let uiImage = UIImage(named: detail.member.avatarEmoji) {
                     Image(uiImage: uiImage)
                         .resizable()
                         .scaledToFill()
-                        .frame(width: 48, height: 48)
+                        .frame(width: 38, height: 38)
                         .clipShape(Circle())
-                        .overlay(Circle().stroke(Color.gray.opacity(0.15), lineWidth: 1))
                 } else {
-                    Text(member.avatarEmoji)
-                        .font(.system(size: 24))
-                        .frame(width: 48, height: 48)
+                    Text(detail.member.avatarEmoji)
+                        .font(.system(size: 20))
+                        .frame(width: 38, height: 38)
                         .background(Color.gray.opacity(0.1))
                         .clipShape(Circle())
                 }
 
-                // Name
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
-                        Text(member.displayName)
-                            .font(
-                                .system(
-                                    size: 16,
-                                    weight: .medium
-                                )
-                            )
+                        Text(detail.member.displayName)
+                            .font(.system(size: 15, weight: .bold))
                             .foregroundStyle(.primary)
 
-                        if member.isHost {
+                        if detail.member.isHost {
                             Text("Host")
-                                .font(.system(size: 11, weight: .bold))
+                                .font(.system(size: 10, weight: .bold))
                                 .foregroundStyle(Color("Blue2"))
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
@@ -378,17 +530,72 @@ private struct PaymentMemberRow: View {
 
                 Spacer()
 
-                // Status Badge: Host is ALWAYS Paid automatically
-                PaymentBadge(
-                    isPaid: member.isHost || member.paymentStatus == .hostConfirmed || member.paymentStatus == .memberMarkedPaid,
-                    isHost: member.isHost,
-                    status: member.paymentStatus
-                )
+                // Status Badge (clickable by host to confirm payment)
+                Button {
+                    onTogglePaid()
+                } label: {
+                    PaymentBadge(
+                        isPaid: detail.member.isHost || detail.member.paymentStatus == .hostConfirmed || detail.member.paymentStatus == .memberMarkedPaid,
+                        isHost: detail.member.isHost,
+                        status: detail.member.paymentStatus
+                    )
+                }
+                .buttonStyle(.plain)
+                .disabled(!isHostView || detail.member.isHost)
             }
-            .padding(.vertical, 12)
+
+            // Items List
+            if detail.items.isEmpty {
+                Text("No items claimed")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, 50)
+            } else {
+                VStack(spacing: 6) {
+                    ForEach(Array(detail.items.enumerated()), id: \.offset) { _, item in
+                        HStack {
+                            Text("\(item.portionText) \(item.name)")
+                                .font(.system(size: 13))
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+
+                            Spacer()
+
+                            Text(item.price.rupiah)
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .padding(.leading, 50)
+            }
+
+            // Subtotal, Tax, Svc breakdown if applicable
+            if detail.taxShare > 0 || detail.serviceShare > 0 {
+                HStack {
+                    Text("Items: \(detail.subtotal.rupiah)")
+                    if detail.serviceShare > 0 {
+                        Text("· Svc: \(detail.serviceShare.rupiah)")
+                    }
+                    if detail.taxShare > 0 {
+                        Text("· Tax: \(detail.taxShare.rupiah)")
+                    }
+                }
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .padding(.leading, 50)
+            }
+
+            // Member Total
+            HStack {
+                Spacer()
+                Text("Total: \(detail.totalOwed.rupiah)")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(Color("Blue2"))
+            }
+            .padding(.top, 2)
         }
-        .buttonStyle(.plain)
-        .disabled(!isHostView || member.isHost)
+        .padding(.vertical, 4)
     }
 }
 
@@ -417,11 +624,11 @@ private struct PaymentBadge: View {
                     ? "Paid"
                     : "Unpaid"
             )
-            .font(.system(size: 14, weight: .medium))
+            .font(.system(size: 13, weight: .medium))
             .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 8)
-        .padding(.vertical, 5)
+        .padding(.vertical, 4)
         .background(Color.white)
         .overlay {
             RoundedRectangle(cornerRadius: 6)
@@ -461,7 +668,7 @@ private struct TicketCard<Content: View>: View {
 
             content
                 .padding(.horizontal, 24)
-                .padding(.vertical, 40)
+                .padding(.vertical, 32)
         }
     }
 }

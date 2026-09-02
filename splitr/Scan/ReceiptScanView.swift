@@ -11,8 +11,23 @@ import SwiftUI
 /// discarded, never left looking real.
 struct ReceiptScanFlow: View {
     let store: any RoomStoring
-    let roomID: UUID
+    let roomID: UUID?
+    var onRoomCreated: ((UUID) -> Void)? = nil
     var recognizer: any ReceiptRecognizing = VisionReceiptRecognizer()
+
+    init(store: any RoomStoring, roomID: UUID, recognizer: any ReceiptRecognizing = VisionReceiptRecognizer()) {
+        self.store = store
+        self.roomID = roomID
+        self.onRoomCreated = nil
+        self.recognizer = recognizer
+    }
+
+    init(store: any RoomStoring, onRoomCreated: @escaping (UUID) -> Void, recognizer: any ReceiptRecognizing = VisionReceiptRecognizer()) {
+        self.store = store
+        self.roomID = nil
+        self.onRoomCreated = onRoomCreated
+        self.recognizer = recognizer
+    }
 
     @Environment(\.dismiss) private var dismiss
     @State private var phase: Phase = .capture
@@ -48,13 +63,9 @@ struct ReceiptScanFlow: View {
                         .navigationTitle("Scan Receipt")
                         .navigationBarTitleDisplayMode(.inline)
                 case .review(let parsed, let photo):
-                    // The non-negotiable step: parsed drafts go through the
-                    // edit form and only an explicit Save creates the Bill.
-                    // Zero recognized items is a normal outcome — the form
-                    // opens empty and the host types the items in. The photo
-                    // rides along so the user verifies against it without
-                    // leaving the form.
-                    AddBillForm(store: store, roomID: roomID, scan: parsed, photo: photo)
+                    if let roomID {
+                        AddBillForm(store: store, roomID: roomID, scan: parsed, photo: photo)
+                    }
                 case .failed(let message):
                     ContentUnavailableView {
                         Label("Couldn't read that", systemImage: "doc.viewfinder")
@@ -126,12 +137,32 @@ struct ReceiptScanFlow: View {
         let bill = Bill(
             merchantName: merchant,
             photoReference: photoReference,
-            taxRate: .percent(parsed.taxPercent ?? 10),
+            taxRate: .percent(parsed.taxPercent ?? 0),
             serviceChargeRate: .percent(parsed.servicePercent ?? 0),
             taxBasis: parsed.taxBasis ?? .subtotalPlusService,
             items: billItems
         )
-        store.addBill(bill, roomID: roomID)
-        dismiss()
+
+        if let roomID {
+            store.addBill(bill, roomID: roomID)
+            dismiss()
+        } else {
+            // Room is created ONLY NOW because photo was taken or selected
+            let profile = UserProfile.load()
+            let hostName = profile.name.isEmpty ? "Host" : profile.name
+            let hostEmoji = profile.avatar
+            let roomName = (merchant.isEmpty || merchant == "Receipt")
+                ? "Bill \(DateFormatter.localizedString(from: Date(), dateStyle: .medium, timeStyle: .none))"
+                : merchant
+            
+            let newRoom = store.createRoom(
+                named: roomName,
+                hostName: hostName,
+                hostEmoji: hostEmoji
+            )
+            store.addBill(bill, roomID: newRoom.id)
+            dismiss()
+            onRoomCreated?(newRoom.id)
+        }
     }
 }

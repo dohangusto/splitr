@@ -92,6 +92,44 @@ public struct Room: Identifiable, Sendable, Hashable, Codable {
             .flooredValue
     }
 
+    /// Estimated breakdown for a member (subtotal, tax share, service share, and total)
+    /// based on the items they have claimed so far across all bills in the room.
+    public func estimatedClaimSettlement(for memberID: UUID) -> (subtotal: Int, taxShare: Int, serviceShare: Int, total: Int) {
+        var subtotal = 0
+        var taxShare = 0
+        var serviceShare = 0
+        
+        for bill in bills {
+            var memberExactSubtotal = Fraction.zero
+            for item in bill.items {
+                switch item.claimState {
+                case .claimed(let claims):
+                    if let c = claims.first(where: { $0.memberID == memberID }) {
+                        memberExactSubtotal += c.portion * item.unitPrice
+                    }
+                case .forceAssigned(let id):
+                    if id == memberID {
+                        memberExactSubtotal += Fraction(item.unitPrice)
+                    }
+                case .unclaimed:
+                    break
+                }
+            }
+            
+            let billSubtotal = bill.subtotal
+            if billSubtotal > 0 {
+                let s = memberExactSubtotal.flooredValue
+                let t = (Fraction(bill.taxTotal) * memberExactSubtotal / Fraction(billSubtotal)).flooredValue
+                let svc = (Fraction(bill.serviceChargeTotal) * memberExactSubtotal / Fraction(billSubtotal)).flooredValue
+                subtotal += s
+                taxShare += t
+                serviceShare += svc
+            }
+        }
+        
+        return (subtotal, taxShare, serviceShare, subtotal + taxShare + serviceShare)
+    }
+
     // MARK: - State machine (host-only)
 
     /// Advances `open → claiming → settling → closed`. Throws from `.closed`.
@@ -271,6 +309,49 @@ public struct Room: Identifiable, Sendable, Hashable, Codable {
                 })
             case .forceAssigned(let assignee):
                 throw ClaimError.alreadyClaimed(itemID: itemID, claimers: [assignee])
+            }
+        }
+    }
+
+    /// Toggles a claim for a specific member:
+    /// - Unclaimed -> claims wholly for member.
+    /// - Claimed with member -> removes member (unclaims if sole claimer, re-splits if shared).
+    /// - Claimed without member -> adds member and re-splits equally.
+    /// - Force-assigned -> unclaims if same member, or re-splits if different member.
+    public mutating func toggleClaim(itemID: UUID, in billID: UUID, for memberID: UUID) throws {
+        guard state == .claiming || state == .settling else { throw ClaimError.claimingNotAllowed(state) }
+        guard member(withID: memberID) != nil else {
+            throw ClaimError.memberNotFound(memberID)
+        }
+        try mutateItem(itemID: itemID, in: billID) { item in
+            switch item.claimState {
+            case .unclaimed:
+                item.claimState = .claimed([Claim(itemID: itemID, memberID: memberID, portion: .one)])
+            case .forceAssigned(let assignee):
+                if assignee == memberID {
+                    item.claimState = .unclaimed
+                } else {
+                    let claimers = [assignee, memberID]
+                    item.claimState = .claimed(claimers.map {
+                        Claim(itemID: itemID, memberID: $0, portion: Fraction(1, 2))
+                    })
+                }
+            case .claimed(let claims):
+                if claims.contains(where: { $0.memberID == memberID }) {
+                    let remaining = claims.filter { $0.memberID != memberID }.map(\.memberID)
+                    if remaining.isEmpty {
+                        item.claimState = .unclaimed
+                    } else {
+                        item.claimState = .claimed(remaining.map {
+                            Claim(itemID: itemID, memberID: $0, portion: Fraction(1, remaining.count))
+                        })
+                    }
+                } else {
+                    let claimers = claims.map(\.memberID) + [memberID]
+                    item.claimState = .claimed(claimers.map {
+                        Claim(itemID: itemID, memberID: $0, portion: Fraction(1, claimers.count))
+                    })
+                }
             }
         }
     }

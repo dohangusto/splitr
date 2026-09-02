@@ -65,6 +65,7 @@ public enum ReceiptParser {
 
     public static func parse(_ receipt: RecognizedReceipt) -> ParsedReceipt {
         var result = ParsedReceipt()
+        result.merchantName = detectMerchant(from: receipt.rows)
         var taxAmount: Int?
         var serviceAmount: Int?
         var sawItem = false
@@ -160,13 +161,24 @@ public enum ReceiptParser {
             }
 
             // Text without an amount.
-            if !sawItem && !sawTotal && result.merchantName == nil {
-                // Header block: first line is the merchant, the rest
-                // (address, phone, date) is noise unless the next line
-                // turns out to be its price.
-                result.merchantName = line
-            } else if !sawTotal {
-                // Might be a name whose price is on the next line; held,
+            if !sawTotal {
+                if result.merchantName == nil {
+                    let cleanedHeader = cleaned(line)
+                    if !isHeaderNoiseLine(cleanedHeader) && cleanedHeader.contains(where: { $0.isLetter }) {
+                        result.merchantName = cleanedHeader
+                        continue
+                    }
+                }
+
+                // If this line is the merchant name before any items, skip it
+                if let merchant = result.merchantName, !sawItem {
+                    let cleanedLine = cleaned(line)
+                    if cleanedLine.lowercased() == merchant.lowercased() || isHeaderNoiseLine(cleanedLine) {
+                        continue
+                    }
+                }
+
+                // Might be an item name whose price is on the next line; held,
                 // not yet given up on.
                 flushPending()
                 pending = (line, row.box, row.confidence, sawItem)
@@ -200,13 +212,13 @@ public enum ReceiptParser {
         for cell in cells {
             let text = cell.text.trimmingCharacters(in: .whitespaces)
             if text.isEmpty { continue }
-            // "@22.000" — explicit unit price marker.
-            if let match = text.firstMatch(of: /^@\s*(Rp\.?\s*)?([\d.,]+)$/),
-               let unit = moneyValue(String(match.2)) {
+            // "@22.000" / "*22.000" — explicit unit price marker.
+            if let match = text.firstMatch(of: /^[@*]\s*(?:Rp\.?\s*)?([\d.,]+)$/),
+               let unit = moneyValue(String(match.1)) {
                 explicitUnit = unit
             }
-            // Pure quantity: "2", "2x", "x2".
-            else if let match = text.wholeMatch(of: /[xX]?(\d{1,2})[xX]?/),
+            // Pure quantity or unit quantity: "2", "2x", "x2", "2pcs", "2 porsi".
+            else if let match = text.wholeMatch(of: /(?i)[xX]?(\d{1,2})\s*(?:[xX]|pcs|porsi|btl|cup|gelas|bks|pack|pk|pax|ptg|portion|can)?/),
                     let q = Int(match.1), (1...99).contains(q) {
                 qty = q
             }
@@ -225,12 +237,18 @@ public enum ReceiptParser {
         if amounts.contains(where: { $0 < 0 }) { return nil } // discount → fall back, surfaced
         var name = nameParts.joined(separator: " ")
 
-        // Inline qty in the name cell: "2x Sate Ayam" / "Sate Ayam x2".
+        // Inline qty in the name cell: "2x Sate Ayam" / "Sate Ayam x2" / "2 porsi Sate".
         if qty == 1 {
             if let match = name.firstMatch(of: /^(\d{1,2})\s*[xX]\s+/), let q = Int(match.1) {
                 qty = q
                 name.removeSubrange(match.range)
+            } else if let match = name.firstMatch(of: /(?i)^(\d{1,2})\s*(?:pcs|porsi|btl|cup|gelas|bks|pack|pk|pax|ptg|portion)\s+/), let q = Int(match.1) {
+                qty = q
+                name.removeSubrange(match.range)
             } else if let match = name.firstMatch(of: /\s[xX]\s?(\d{1,2})\s*$/), let q = Int(match.1) {
+                qty = q
+                name.removeSubrange(match.range)
+            } else if let match = name.firstMatch(of: /(?i)\s+(\d{1,2})\s*(?:pcs|porsi|btl|cup|gelas|bks|pack|pk|pax|ptg|portion)\s*$/), let q = Int(match.1) {
                 qty = q
                 name.removeSubrange(match.range)
             }
@@ -267,9 +285,8 @@ public enum ReceiptParser {
 
     /// Parses the price line of a split-line item: the previous line was a
     /// bare name, this line carries only quantity and money ("25.000",
-    /// "2 x 25.000", "2 x 25.000  50.000", "2 @25.000  50.000"). Returns
-    /// nil when the line has its own name — then it's a normal item and the
-    /// pending name was something else.
+    /// "2 x 25.000", "2 x 25.000  50.000", "2 @25.000  50.000", "2  25.000  50.000").
+    /// Returns nil when the line has its own name — then it's a normal item.
     private static func parseContinuation(
         line: String,
         money: (value: Int, range: Range<String.Index>),
@@ -286,23 +303,33 @@ public enum ReceiptParser {
 
         if rest.isEmpty {
             // Bare price → single unit.
-        } else if let match = rest.wholeMatch(of: /(\d{1,2})\s*[xX]/), let q = Int(match.1) {
-            // "2 x 25.000" — receipt convention reads as qty × unit price.
-            // If that reading is wrong, subtotal reconciliation flags it.
+        } else if let match = rest.wholeMatch(of: /(\d{1,2})\s*[xX*@]/), let q = Int(match.1), (1...99).contains(q) {
+            // "2 x 25.000" / "2 @ 25.000" — receipt convention reads as qty × unit price.
             qty = q
-        } else if let match = rest.wholeMatch(of: /(\d{1,2})\s*[xX@]\s*(?:Rp\.?\s*)?([\d.,]+)/),
+            unitPrice = money.value
+        } else if let match = rest.wholeMatch(of: /(\d{1,2})\s*[xX*@]\s*(?:Rp\.?\s*)?([\d.,]+)/),
                   let q = Int(match.1), let unit = moneyValue(String(match.2)) {
-            // "2 x 25.000  [50.000]" — qty and unit, trailing money is the
-            // line total; flag when they disagree.
+            // "2 x 25.000  [50.000]" — qty and unit, trailing money is the line total.
             qty = q
             unitPrice = unit
             needsReview = unit * q != money.value
-        } else if let match = rest.wholeMatch(of: /(?:Rp\.?\s*)?([\d.,]+)\s*[xX]\s*(\d{1,2})/),
+        } else if let match = rest.wholeMatch(of: /(\d{1,2})\s+(?:Rp\.?\s*)?(\d{1,3}(?:[.,]\d{3})+|\d{4,})/),
+                  let q = Int(match.1), let unit = moneyValue(String(match.2)) {
+            // "2  25.000  [50.000]" — spaced qty and unit price.
+            qty = q
+            unitPrice = unit
+            needsReview = unit * q != money.value
+        } else if let match = rest.wholeMatch(of: /(?:Rp\.?\s*)?([\d.,]+)\s*[xX*@]\s*(\d{1,2})/),
                   let unit = moneyValue(String(match.1)), let q = Int(match.2) {
             // "25.000 x 2" — unit price first, then qty.
             qty = q
             unitPrice = unit
             needsReview = unit * q != money.value
+        } else if let match = rest.wholeMatch(of: /(?i)(\d{1,2})\s*(?:pcs|porsi|btl|cup|gelas|bks|pack|pk|pax|ptg)?/),
+                  let q = Int(match.1), (1...99).contains(q) {
+            // "2 pcs [50.000]" or "2 [50.000]"
+            qty = q
+            (unitPrice, needsReview) = unitFromTotal(money.value, qty: qty)
         } else {
             return nil // has its own name — not a continuation
         }
@@ -324,37 +351,70 @@ public enum ReceiptParser {
         // Amounts below Rp 100 are almost certainly not prices.
         guard money.value >= 100 else { return nil }
 
-        var name = String(line[..<money.range.lowerBound])
+        var name = cleaned(String(line[..<money.range.lowerBound]))
         var qty = 1
         var unitPrice = money.value
         var needsReview = false
 
-        // "Nama 2 @22.000 [44.000]" — qty with explicit unit price.
-        if let match = name.firstMatch(of: /(\d{1,2})\s*@\s*(Rp\.?\s*)?([\d.,]+)/),
-           let unit = moneyValue(String(match.3)) {
+        // 1. "Nama 2 @22.000 [44.000]" or "Nama 2 * 22.000" or "Nama 2 x 22.000"
+        if let match = name.firstMatch(of: /(\d{1,2})\s*[@*xX]\s*(?:Rp\.?\s*)?([\d.,]+)\s*$/),
+           let unit = moneyValue(String(match.2)) {
             qty = Int(match.1) ?? 1
             unitPrice = unit
             name.removeSubrange(match.range)
+            needsReview = unit * qty != money.value
         }
-        // "2x Nama [70.000]" — leading qty; amount is the line total.
-        else if let match = name.firstMatch(of: /^(\d{1,2})\s*[xX]\s+/) {
-            qty = Int(match.1) ?? 1
-            name.removeSubrange(match.range)
-            (unitPrice, needsReview) = unitFromTotal(money.value, qty: qty)
-        }
-        // "Nama x2 [70.000]" — trailing qty marker.
-        else if let match = name.firstMatch(of: /\s[xX]\s?(\d{1,2})\s*$/) {
-            qty = Int(match.1) ?? 1
-            name.removeSubrange(match.range)
-            (unitPrice, needsReview) = unitFromTotal(money.value, qty: qty)
-        }
-        // "Nama 22.000 x 2 [44.000]" — unit price and qty; amount is the line total.
-        else if let match = name.firstMatch(of: /(?:Rp\.?\s*)?([\d.,]+)\s*[xX]\s*(\d{1,2})\s*$/),
+        // 2. "Nama 22.000 x 2 [44.000]" — unit price and qty; amount is the line total.
+        else if let match = name.firstMatch(of: /(?:Rp\.?\s*)?([\d.,]+)\s*[xX*@]\s*(\d{1,2})\s*$/),
                 let unit = moneyValue(String(match.1)) {
             qty = Int(match.2) ?? 1
             unitPrice = unit
             name.removeSubrange(match.range)
             needsReview = unit * qty != money.value
+        }
+        // 3. "Nama 2  22.000 [44.000]" — spaced qty & unit price before line total.
+        else if let match = name.firstMatch(of: /\s+(\d{1,2})\s+(?:Rp\.?\s*)?(\d{1,3}(?:[.,]\d{3})+|\d{4,})\s*$/),
+                let unit = moneyValue(String(match.2)) {
+            qty = Int(match.1) ?? 1
+            unitPrice = unit
+            name.removeSubrange(match.range)
+            needsReview = unit * qty != money.value
+        }
+        // 4. "2x Nama [70.000]" — leading qty with 'x'; amount is the line total.
+        else if let match = name.firstMatch(of: /^(\d{1,2})\s*[xX]\s+/) {
+            qty = Int(match.1) ?? 1
+            name.removeSubrange(match.range)
+            (unitPrice, needsReview) = unitFromTotal(money.value, qty: qty)
+        }
+        // 5. "2 pcs Nama [70.000]" / "2 porsi Nama" — leading qty with unit keyword.
+        else if let match = name.firstMatch(of: /(?i)^(\d{1,2})\s*(?:pcs|porsi|btl|cup|gelas|bks|pack|pk|pax|ptg|portion|can|kaleng)\s+/) {
+            qty = Int(match.1) ?? 1
+            name.removeSubrange(match.range)
+            (unitPrice, needsReview) = unitFromTotal(money.value, qty: qty)
+        }
+        // 6. "Nama x2 [70.000]" or "Nama 2x" — trailing qty marker.
+        else if let match = name.firstMatch(of: /\s[xX]\s?(\d{1,2})\s*$/) {
+            qty = Int(match.1) ?? 1
+            name.removeSubrange(match.range)
+            (unitPrice, needsReview) = unitFromTotal(money.value, qty: qty)
+        }
+        else if let match = name.firstMatch(of: /\s(\d{1,2})\s?[xX]\s*$/) {
+            qty = Int(match.1) ?? 1
+            name.removeSubrange(match.range)
+            (unitPrice, needsReview) = unitFromTotal(money.value, qty: qty)
+        }
+        // 7. "Nama 2 pcs [70.000]" / "Nama 2 porsi" — trailing qty with unit keyword.
+        else if let match = name.firstMatch(of: /(?i)\s+(\d{1,2})\s*(?:pcs|porsi|btl|cup|gelas|bks|pack|pk|pax|ptg|portion|can|kaleng)\s*$/) {
+            qty = Int(match.1) ?? 1
+            name.removeSubrange(match.range)
+            (unitPrice, needsReview) = unitFromTotal(money.value, qty: qty)
+        }
+        // 8. "2 Nama [70.000]" — leading digit without 'x' when followed by letters.
+        else if let match = name.firstMatch(of: /^(\d{1,2})\s+(?=[A-Za-z])/),
+                let q = Int(match.1), (1...99).contains(q) {
+            qty = q
+            name.removeSubrange(match.range)
+            (unitPrice, needsReview) = unitFromTotal(money.value, qty: qty)
         }
 
         let cleanedName = cleaned(name)
@@ -381,9 +441,17 @@ public enum ReceiptParser {
     }
 
     private static func cleaned(_ name: String) -> String {
-        name.trimmingCharacters(in: .whitespaces)
-            .trimmingCharacters(in: CharacterSet(charactersIn: ".…-:*"))
-            .trimmingCharacters(in: .whitespaces)
+        var s = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Strip item numbering prefix like "1. ", "01. ", "1) ", "[1] " (must have space after delimiter)
+        if let match = s.firstMatch(of: /^\(?\d{1,2}[.)\]]\s+/) {
+            s.removeSubrange(match.range)
+        }
+        // Strip leading & trailing punctuation artifacts:
+        s = s.trimmingCharacters(in: CharacterSet(charactersIn: ".…-:*~_#^|/\\;,'\"()[]{}"))
+             .trimmingCharacters(in: .whitespaces)
+        // Normalize multiple spaces into single space:
+        s = s.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        return s
     }
 
     private static func unitFromTotal(_ total: Int, qty: Int) -> (Int, Bool) {
@@ -441,8 +509,10 @@ public enum ReceiptParser {
     }
 
     private static func percent(in line: String) -> Int? {
-        guard let match = line.firstMatch(of: /(\d{1,2})\s*%/) else { return nil }
-        return Int(match.1)
+        if let match = line.firstMatch(of: /(?i)(?:@|\(|\b)(\d{1,2})(?:[.,]\d+)?\s*%/) {
+            return Int(match.1)
+        }
+        return nil
     }
 
     // MARK: - Rate & basis resolution
@@ -512,7 +582,10 @@ public enum ReceiptParser {
         "indonesia", "telp", "phone", "npwp", "n.p.w.p", "gedung", "menara",
         "toko", "cabang", "tanggal", "date", "time", "waktu", "jam", "invoice",
         "no.", "nomor", "transaksi", "receipt", "inv", "trx", "bill", "cashier",
-        "kasir", "spbu", "merchant", "terminal"
+        "kasir", "spbu", "merchant", "terminal", "dine in", "dine-in", "take away",
+        "takeout", "take out", "pickup", "delivery", "pos", "table", "meja",
+        "guest", "pax", "server", "waiter", "pelayan", "order id", "order no",
+        "bill no", "receipt no", "subtotal", "sub total"
     ]
 
     private static func isHeaderNoise(_ text: String, price: Int) -> Bool {
@@ -538,15 +611,134 @@ public enum ReceiptParser {
         return false
     }
 
-    private static let subtotalKeywords = ["subtotal", "sub total", "sub-total", "sub ttl"]
-    private static let taxKeywords = ["pb1", "pb 1", "pajak", "ppn", "tax"]
-    private static let serviceKeywords = ["service", "svc", "layanan", "s.charge"]
+    private static let subtotalKeywords = ["subtotal", "sub total", "sub-total", "sub ttl", "total harga", "total sebelum pajak"]
+    private static let taxKeywords = [
+        "pb1", "pb 1", "pb-1", "pb.1", "pajak", "ppn", "p.p.n", "tax",
+        "pajak resto", "pajak daerah", "govt tax", "gov tax", "government tax",
+        "restaurant tax", "resto tax", "local tax", "vat"
+    ]
+    private static let serviceKeywords = [
+        "service", "service charge", "service chg", "svc", "svc chg", "svc. charge",
+        "s.charge", "s. charge", "s/c", "sc ", "layanan", "biaya layanan", "service fee"
+    ]
     private static let discountKeywords = ["disc", "diskon", "potongan", "promo", "voucher"]
     private static let totalKeywords = ["total", "jumlah", "amount due"]
     private static let ignoreKeywords = [
         "cash", "tunai", "kembali", "kembalian", "change", "qris", "debit",
         "credit", "kartu", "npwp", "terima kasih", "thank you", "sampai jumpa",
-        "kasir", "cashier", "meja", "pax", "tanggal", "order", "struk", "receipt",
-        "no ", "no.", "tel", "wifi", "follow", "instagram",
+        "kasir", "cashier", "meja", "table", "pax", "tanggal", "order", "struk", "receipt",
+        "no ", "no.", "tel", "wifi", "follow", "instagram", "dine in", "take away", "pickup",
+        "server", "waiter", "pelayan"
     ]
+
+    // MARK: - Merchant Title Detection
+
+    /// Detects the store / merchant name from the header area of the receipt.
+    /// Prefers text with larger font size (taller bounding box) and top position,
+    /// while filtering out receipt headers, addresses, dates, and order numbers.
+    private static func detectMerchant(from rows: [ReceiptRow]) -> String? {
+        var headerCandidates: [(text: String, box: NormalizedRect?, index: Int)] = []
+
+        for (index, row) in rows.prefix(8).enumerated() {
+            let rawText = row.joinedText.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !rawText.isEmpty else { continue }
+
+            // Stop gathering header candidates once items / pricing / summary lines appear
+            if trailingMoney(in: rawText) != nil { break }
+            let lowered = rawText.lowercased()
+            if contains(lowered, any: subtotalKeywords + totalKeywords + taxKeywords + serviceKeywords) {
+                break
+            }
+
+            let clean = cleaned(rawText)
+            guard clean.count >= 2, clean.contains(where: { $0.isLetter }) else { continue }
+            if isHeaderNoiseLine(clean) { continue }
+
+            headerCandidates.append((text: clean, box: row.box, index: index))
+        }
+
+        guard !headerCandidates.isEmpty else { return nil }
+
+        let maxHeight = headerCandidates.compactMap { $0.box?.height }.max() ?? 0
+
+        var scored: [(candidate: String, score: Double)] = []
+        for c in headerCandidates {
+            var score: Double = 0.0
+
+            // 1. Visual height score: larger text (prominent store title) gets higher weight
+            if let height = c.box?.height, maxHeight > 0 {
+                let sizeRatio = height / maxHeight
+                score += sizeRatio * 40.0
+            }
+
+            // 2. Proximity to top (earlier lines get position bonus)
+            score += max(0, 20.0 - Double(c.index) * 4.0)
+
+            // 3. Normalized Y coordinate bonus (closer to receipt top edge)
+            if let y = c.box?.y {
+                score += max(0, (1.0 - y) * 15.0)
+            }
+
+            let lowered = c.text.lowercased()
+            // 4. Known culinary / store keywords bonus
+            let storeKeywords = [
+                "kopi", "coffee", "cafe", "kafe", "resto", "restaurant", "restoran",
+                "warung", "bakmi", "kitchen", "bistro", "bakery", "mart", "store",
+                "shop", "tea", "teh", "soto", "sate", "ayam", "bebek", "diner",
+                "pizza", "burger", "steak", "grill", "house", "bar", "lounge", "kedai"
+            ]
+            if contains(lowered, any: storeKeywords) {
+                score += 15.0
+            }
+
+            // 5. Capitalization bonus (all caps like "WARUNG TEKKO", "KOPI KENANGAN")
+            if c.text == c.text.uppercased() && c.text.count >= 4 {
+                score += 10.0
+            }
+
+            // 6. Penalize excessively long lines (usually slogans or descriptions)
+            if c.text.count > 40 {
+                score -= 15.0
+            }
+
+            scored.append((candidate: c.text, score: score))
+        }
+
+        return scored.max(by: { $0.score < $1.score })?.candidate
+    }
+
+    private static func isHeaderNoiseLine(_ text: String) -> Bool {
+        let lowered = text.lowercased()
+
+        // Skip generic receipt / bill titles & greetings
+        let titleNoise = [
+            "struk", "receipt", "bill", "nota", "invoice", "pembelian", "penjualan",
+            "selamat datang", "welcome", "welcome to", "terima kasih",
+            "thank you", "customer copy", "merchant copy", "original",
+            "guest bill", "bill preview", "preview bill"
+        ]
+        if titleNoise.contains(where: { lowered == $0 || lowered == "=== \($0) ===" || lowered == "--- \($0) ---" }) {
+            return true
+        }
+
+        // Skip dates, times, and order/trx numbers
+        if text.firstMatch(of: /(?i)\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b/) != nil { return true }
+        if text.firstMatch(of: /(?i)\b\d{1,2}:\d{2}(?::\d{2})?\b/) != nil { return true }
+        if text.firstMatch(of: /(?i)\b(waktu|tanggal|date|time|jam)\b/) != nil { return true }
+        if text.firstMatch(of: /(?i)\b(order|bill|trx|invoice|transaksi|check|receipt|table|meja|kasir|cashier|server|waiter|pos)\s*#?:?\s*\d+/) != nil { return true }
+
+        // Skip address & tax details
+        let addressKeywords = [
+            "jl.", "jalan", "blok", "rt/rw", "kecamatan", "kelurahan", "kabupaten",
+            "telp", "phone", "npwp", "n.p.w.p", "gedung", "menara", "lantai", "lt."
+        ]
+        if addressKeywords.contains(where: { lowered.contains($0) }) {
+            return true
+        }
+        if text.firstMatch(of: /\d{2,}\.\d{3}\.\d{3}/) != nil {
+            return true
+        }
+
+        return false
+    }
 }

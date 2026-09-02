@@ -4,10 +4,16 @@
 <dict>
 	<key>CKSharingSupported</key>
 	<true/>
-	<key>NSCameraUsageDescription</key>
-	<string>splitr needs the camera to scan your receipt.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>splitr needs access to your photo library to let you pick an existing receipt.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>splitr</string>
+				<string>splitr-mock-share</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_splitr-join._tcp</string>
@@ -15,6 +21,8 @@
 		<string>_splitr-sync._tcp</string>
 		<string>_splitr-sync._udp</string>
 	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Splitr uses your local network to discover nearby friends and sync bill split rooms in real time.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>

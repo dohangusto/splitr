@@ -32,6 +32,9 @@ protocol RoomStoring: AnyObject, Observable {
     @discardableResult
     func createRoom(named name: String, hostName: String, hostEmoji: String) -> Room
     func joinMember(named name: String, emoji: String, roomID: UUID)
+    /// Adds the current device as a member after opening an invite link and
+    /// makes that member the active perspective for the room.
+    func joinFromInvite(named name: String, emoji: String, roomID: UUID)
     func renameRoom(roomID: UUID, to newName: String)
 
     func advance(roomID: UUID)
@@ -48,6 +51,7 @@ protocol RoomStoring: AnyObject, Observable {
     func joinClaim(itemID: UUID, billID: UUID, roomID: UUID)
     func releaseClaim(itemID: UUID, billID: UUID, roomID: UUID)
     func forceAssign(itemID: UUID, billID: UUID, to memberID: UUID, roomID: UUID)
+    func toggleClaim(itemID: UUID, billID: UUID, for memberID: UUID, roomID: UUID)
 
     func markPaid(roomID: UUID)
     func confirmPayment(of memberID: UUID, roomID: UUID)
@@ -56,9 +60,11 @@ protocol RoomStoring: AnyObject, Observable {
     func addMember(_ member: Member, roomID: UUID)
     func acceptShare(from url: URL) async -> Bool
     func waitForRoom(id: UUID) async -> Bool
+    func deleteRoom(roomID: UUID)
     func resetAllData()
 }
 
 extension RoomStoring {
     func resetAllData() {}
+    func deleteRoom(roomID: UUID) {}
 }

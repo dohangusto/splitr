@@ -270,6 +270,7 @@ final class ProximityJoinCoordinator {
         case .joinRequest(let request):
             guard isHost else { return }
             context.request = request
+            sendInvitation(to: context)
 
         case .invitation(let invitation):
             guard !isHost else { return }

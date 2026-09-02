@@ -354,16 +354,18 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = splitr/splitr.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = Y27P345A4B;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = splitr/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.finance";
-				INFOPLIST_KEY_NSCameraUsageDescription = "splitr scans your restaurant receipt to read the items, so everyone can claim what they ordered.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "splitr needs the camera to scan your receipt.";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "splitr uses the local network to connect with nearby iPhones so friends can join your bill room.";
 				INFOPLIST_KEY_NSNearbyInteractionUsageDescription = "splitr uses your iPhone's precise location to let friends join your bill room by bringing their phone close to yours.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "splitr needs access to your photo library to let you pick an existing receipt.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -375,7 +377,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.bryan.splitr;
+				PRODUCT_BUNDLE_IDENTIFIER = com.bryanseputra.splitr;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -396,16 +398,18 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = splitr/splitr.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = Y27P345A4B;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = splitr/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.finance";
-				INFOPLIST_KEY_NSCameraUsageDescription = "splitr scans your restaurant receipt to read the items, so everyone can claim what they ordered.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "splitr needs the camera to scan your receipt.";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "splitr uses the local network to connect with nearby iPhones so friends can join your bill room.";
 				INFOPLIST_KEY_NSNearbyInteractionUsageDescription = "splitr uses your iPhone's precise location to let friends join your bill room by bringing their phone close to yours.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "splitr needs access to your photo library to let you pick an existing receipt.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -417,7 +421,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.bryan.splitr;
+				PRODUCT_BUNDLE_IDENTIFIER = com.bryanseputra.splitr;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -439,11 +443,11 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 7FF959KWLN;
+				DEVELOPMENT_TEAM = Y27P345A4B;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.bryan.splitrTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.bryanseputra.splitr;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -461,11 +465,11 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 7FF959KWLN;
+				DEVELOPMENT_TEAM = Y27P345A4B;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.bryan.splitrTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.bryanseputra.splitr;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;

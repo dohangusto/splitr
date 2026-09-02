@@ -1,4 +1,6 @@
 import CoreGraphics
+import CoreImage
+import CoreImage.CIFilterBuiltins
 import Foundation
 import SplitBillCore
 import Vision
@@ -19,11 +21,27 @@ protocol ReceiptRecognizing: Sendable {
 struct VisionReceiptRecognizer: ReceiptRecognizing {
 
     func recognize(_ image: CGImage) async throws -> RecognizedReceipt {
-        let requestHandler = VNImageRequestHandler(cgImage: image, options: [:])
+        // Preprocess image for OCR: grayscale & contrast enhancement for thermal receipts
+        let processedCGImage = preprocessForOCR(image) ?? image
+        let requestHandler = VNImageRequestHandler(cgImage: processedCGImage, options: [:])
         let request = VNRecognizeTextRequest()
         request.recognitionLanguages = ["id-ID", "en-US"]
-        request.usesLanguageCorrection = false
+        request.usesLanguageCorrection = true
         request.recognitionLevel = .accurate
+        request.minimumTextHeight = 0.008
+        request.customWords = [
+            "Nasi", "Goreng", "Ayam", "Bakar", "Bebek", "Sate", "Soto", "Bakso",
+            "Mie", "Kwetiau", "Bihun", "Es", "Teh", "Manis", "Tawar", "Kopi",
+            "Susu", "Jus", "Sambal", "Tahu", "Tempe", "Telur", "Keju", "Coklat",
+            "Porsi", "Paket", "Rendang", "Gulai", "Capcay", "Pangsit", "Siomay",
+            "Batagor", "Rawon", "Gado-gado", "Lontong", "Sayur", "Kerupuk", "Krupuk",
+            "Aqua", "Mineral", "Subtotal", "PB1", "PPN", "Tax", "Service", "Diskon",
+            "Total", "Jumlah", "Kembali", "Tunai", "Cash", "QRIS", "Debit", "Order",
+            "Meja", "Table", "Pax", "Pcs", "Item", "Gelato", "Spaghetti", "Salted",
+            "Egg", "Chkn", "Chicken", "Fries", "French", "Fruit", "Tea", "Ice",
+            "Medium", "Large", "Small", "Regular", "Single", "Double", "Cafe",
+            "Resto", "Warung", "Kedai", "Bistro", "Kitchen", "Dine-In", "Takeaway"
+        ]
         
         try await Task.detached {
             try requestHandler.perform([request])
@@ -57,5 +75,17 @@ struct VisionReceiptRecognizer: ReceiptRecognizing {
         
         let lines = RecognizedReceipt.assembleLines(fragments)
         return RecognizedReceipt(rows: lines.map { SplitBillCore.ReceiptRow.line($0) })
+    }
+
+    private func preprocessForOCR(_ cgImage: CGImage) -> CGImage? {
+        let ciImage = CIImage(cgImage: cgImage)
+        let filter = CIFilter.colorControls()
+        filter.inputImage = ciImage
+        filter.saturation = 0.0 // Grayscale
+        filter.contrast = 1.15  // Boost text contrast
+        filter.brightness = 0.05
+        guard let output = filter.outputImage else { return nil }
+        let context = CIContext()
+        return context.createCGImage(output, from: output.extent)
     }
 }

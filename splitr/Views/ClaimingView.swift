@@ -69,22 +69,24 @@ struct ClaimingView: View {
     /// after the Examples' DemoInfoCard: it informs — every claim action
     /// stays on the item rows it belongs to.
     private func runningTotalCard(_ room: Room, actingID: UUID) -> some View {
-        let subtotal = room.claimedSubtotal(for: actingID)
+        let estimate = room.estimatedClaimSettlement(for: actingID)
         return HStack(alignment: .top, spacing: 8) {
             Image(systemName: "hand.tap")
                 .foregroundStyle(.tint)
                 .font(.title2)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Your items so far")
+                Text("Your total so far (inc. tax & service)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Text(subtotal.rupiah)
+                Text(estimate.total.rupiah)
                     .font(.headline)
+                if estimate.total > 0 {
+                    Text("Items: \(estimate.subtotal.rupiah) · Tax: \(estimate.taxShare.rupiah) · Svc: \(estimate.serviceShare.rupiah)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            Text("before tax & service")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
         .padding()

@@ -30,6 +30,16 @@ enum ReceiptPhotoStore {
         return UIImage(contentsOfFile: directory.appendingPathComponent(reference).path)
     }
 
+    static func loadData(_ reference: String?) -> Data? {
+        guard let reference else { return nil }
+        return try? Data(contentsOf: directory.appendingPathComponent(reference))
+    }
+
+    static func saveData(_ data: Data, reference: String) {
+        let fileURL = directory.appendingPathComponent(reference)
+        try? data.write(to: fileURL)
+    }
+
     static func delete(_ reference: String?) {
         guard let reference else { return }
         try? FileManager.default.removeItem(at: directory.appendingPathComponent(reference))

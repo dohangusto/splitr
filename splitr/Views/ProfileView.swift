@@ -40,6 +40,19 @@ struct UserProfile {
         return UserProfile(name: name, avatar: AvatarCatalog.defaultName)
     }
 
+    static func currentDisplayName() -> String {
+        let profile = load()
+        let trimmed = profile.name.trimmingCharacters(in: .whitespaces)
+        if !trimmed.isEmpty { return trimmed }
+        
+        var dev = UIDevice.current.name
+        for suffix in ["'s iPhone", "'s iPad", "’s iPhone", "’s iPad", " iPhone", " iPad", "iPhone", "iPad"] {
+            dev = dev.replacingOccurrences(of: suffix, with: "")
+        }
+        let cleaned = dev.trimmingCharacters(in: .whitespaces)
+        return cleaned.isEmpty ? "Friend" : cleaned
+    }
+
     func save() {
         let defaults = UserDefaults.standard
         defaults.set(name.trimmingCharacters(in: .whitespaces), forKey: Self.nameKey)
@@ -53,6 +66,9 @@ struct UserProfile {
         defaults.removeObject(forKey: Self.avatarKey)
         defaults.removeObject(forKey: Self.legacyEmojiKey)
         defaults.set(false, forKey: "hasCompletedOnboarding")
+        for key in defaults.dictionaryRepresentation().keys where key.hasPrefix("splitr.invite_member.") {
+            defaults.removeObject(forKey: key)
+        }
     }
 }
 

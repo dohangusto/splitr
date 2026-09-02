@@ -6,10 +6,6 @@
 import SwiftUI
 import SplitBillCore
 
-/// Roster of the room's members, plus the host's ways of adding people.
-/// Wired to the store: the list is `room.members`, and "Add new" routes to
-/// the existing add flows (nearby / invite link / manual) rather than
-/// creating local-only people.
 struct PeopleListSheet: View {
 
     let store: any RoomStoring
@@ -22,7 +18,6 @@ struct PeopleListSheet: View {
     @State private var inviteURL: URL?
 
     private var room: Room? { store.room(withID: roomID) }
-    /// New members can join only before settling starts.
     private var canAdd: Bool {
         room.map { $0.state == .open || $0.state == .claiming } ?? false
     }
@@ -30,14 +25,12 @@ struct PeopleListSheet: View {
     var body: some View {
         VStack(spacing: 0) {
 
-            // MARK: - Header
             ZStack {
                 Text("List people")
                     .font(.system(size: 20, weight: .semibold))
                     .foregroundStyle(.black)
 
                 HStack {
-                    // Close Button
                     Button {
                         dismiss()
                     } label: {
@@ -51,7 +44,6 @@ struct PeopleListSheet: View {
 
                     Spacer()
 
-                    // Add New Button
                     if canAdd {
                         Button {
                             addNewTapped()
@@ -76,7 +68,6 @@ struct PeopleListSheet: View {
             .padding(.horizontal, 24)
             .padding(.top, 24)
 
-            // MARK: - People List
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 12) {
                     ForEach(room?.members ?? []) { member in
@@ -119,7 +110,6 @@ struct PeopleListSheet: View {
         }
     }
 
-    /// Allows the host to choose between Nearby Interaction, invite link, or manual entry.
     private func addNewTapped() {
         showAddOptions = true
     }

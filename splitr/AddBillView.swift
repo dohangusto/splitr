@@ -163,7 +163,7 @@ struct AddBillForm: View {
                 servicePercent = scan.servicePercent ?? 0
                 taxBasis = scan.taxBasis ?? taxBasis
                 if !scan.items.isEmpty {
-                    items = scan.items
+                    items = Self.groupDrafts(scan.items)
                 }
             }
         }
@@ -202,6 +202,24 @@ struct AddBillForm: View {
             store.addBill(bill, roomID: roomID)
         }
         dismiss()
+    }
+
+    /// Groups raw drafts with identical names and prices so review shows unified quantity rows.
+    private static func groupDrafts(_ drafts: [DraftItem]) -> [DraftItem] {
+        var grouped: [DraftItem] = []
+        for draft in drafts {
+            let trimmedName = draft.name.trimmingCharacters(in: .whitespaces)
+            if let index = grouped.firstIndex(where: {
+                $0.name.trimmingCharacters(in: .whitespaces).lowercased() == trimmedName.lowercased()
+                && $0.price == draft.price
+            }) {
+                grouped[index].qty += draft.qty
+                if draft.needsReview { grouped[index].needsReview = true }
+            } else {
+                grouped.append(draft)
+            }
+        }
+        return grouped.isEmpty ? [DraftItem()] : grouped
     }
 
     /// Collapses per-unit items back into qty rows for editing. Safe only

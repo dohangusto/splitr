@@ -1,17 +1,6 @@
 import SwiftUI
 import SplitBillCore
 
-/// Home, shaped like the `05 BottomAccessory` "Adaptive with Search" pattern:
-/// a TabView (Rooms / History / Search-role tab) whose two primary actions
-/// live in a persistent `tabViewBottomAccessory` above the tab bar:
-/// Join Room (Nearby Interaction) and Scan a Receipt — scanning a new
-/// receipt from Home *is* initiating a new bill room, so it opens the
-/// create-room flow. The accessory adapts: full labeled buttons when
-/// expanded, compact inline controls when the tab bar minimizes on scroll.
-///
-/// Scan/create runs the iCloud hosting preflight before the sheet opens, so a
-/// device that can't host finds out immediately with actionable copy;
-/// joining is never gated by hosting health.
 struct RoomListView: View {
     let store: any RoomStoring
 

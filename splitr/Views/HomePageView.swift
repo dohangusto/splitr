@@ -3,6 +3,8 @@ import SplitBillCore
 
 struct HomePageView: View {
     let store: any RoomStoring
+    var initialRoomID: UUID? = nil
+    var onInitialRoomOpened: (() -> Void)? = nil
 
     @State private var showCreateRoom = false
     @State private var showJoinNearby = false
@@ -12,7 +14,6 @@ struct HomePageView: View {
     @State private var profile = UserProfile.load()
     
     @State private var showScanFlow = false
-    @State private var activeScanRoomID: UUID?
     
     @State private var selectedTab: HomeTab = .home
     
@@ -61,17 +62,15 @@ struct HomePageView: View {
             }
         }
         .sheet(isPresented: $showScanFlow) {
-            if let roomID = activeScanRoomID {
-                ReceiptScanFlow(store: store, roomID: roomID)
+            ReceiptScanFlow(store: store) { newRoomID in
+                roomsPath.append(newRoomID)
             }
         }
-        .onChange(of: showScanFlow) { oldValue, newValue in
-            if !newValue, let roomID = activeScanRoomID {
-                if let room = store.room(withID: roomID), !room.bills.isEmpty {
-                    roomsPath.append(roomID)
-                }
-                activeScanRoomID = nil
-            }
+        .onAppear {
+            openInitialRoomIfNeeded()
+        }
+        .onChange(of: initialRoomID) { _, _ in
+            openInitialRoomIfNeeded()
         }
         .alert(
             "Can't host a room right now",
@@ -85,6 +84,15 @@ struct HomePageView: View {
         } message: { issue in
             Text(issue)
         }
+    }
+
+    private func openInitialRoomIfNeeded() {
+        guard let initialRoomID,
+              store.room(withID: initialRoomID) != nil,
+              !roomsPath.contains(initialRoomID) else { return }
+        selectedTab = .home
+        roomsPath = [initialRoomID]
+        onInitialRoomOpened?()
     }
 
     // MARK: - Subviews
@@ -398,23 +406,7 @@ struct HomePageView: View {
     }
 
     private func createRoomTapped() {
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateStyle = .medium
-        dateFormatter.timeStyle = .none
-        let dateString = dateFormatter.string(from: Date())
-        let defaultRoomName = "Bill \(dateString)"
-        
-        let profile = UserProfile.load()
-        let hostName = profile.name.isEmpty ? "Host" : profile.name
-        let hostEmoji = profile.avatar
-        
         guard let cloudStore = AppComposition.cloudStore else {
-            let newRoom = store.createRoom(
-                named: defaultRoomName,
-                hostName: hostName,
-                hostEmoji: hostEmoji
-            )
-            activeScanRoomID = newRoom.id
             showScanFlow = true
             return
         }
@@ -425,12 +417,6 @@ struct HomePageView: View {
             if let issue {
                 hostingIssue = issue
             } else {
-                let newRoom = store.createRoom(
-                    named: defaultRoomName,
-                    hostName: hostName,
-                    hostEmoji: hostEmoji
-                )
-                activeScanRoomID = newRoom.id
                 showScanFlow = true
             }
         }

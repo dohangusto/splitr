@@ -423,6 +423,173 @@ struct ReceiptParserTests {
         #expect(parsed.items[2].name == "Nasi Sarden Cabe")
         #expect(parsed.items[2].price == 37_000)
     }
+
+    @Test("Various quantity patterns: leading digit without x, unit words, numbered lists")
+    func variedQuantityPatterns() {
+        let text = """
+            RESTO NUSANTARA
+            1. 2 Nasi Goreng Spesial   50.000
+            2. 2 porsi Sate Ayam       60.000
+            3. Aqua 3 btl              15.000
+            4. Es Teh Manis 2 cup      20.000
+            5. Donat Coklat 2 pcs      24.000
+            Subtotal                  169.000
+            """
+        let parsed = ReceiptParser.parse(text: text)
+        // 2 Nasi (2) + 2 Sate (2) + 3 Aqua (3) + 2 Es Teh (2) + 2 Donat (2) = 11 items
+        #expect(parsed.items.count == 11)
+        #expect(parsed.items[0].name == "Nasi Goreng Spesial")
+        #expect(parsed.items[0].price == 25_000)
+        #expect(parsed.items[2].name == "Sate Ayam")
+        #expect(parsed.items[2].price == 30_000)
+        #expect(parsed.items[4].name == "Aqua")
+        #expect(parsed.items[4].price == 5_000)
+        #expect(parsed.items[7].name == "Es Teh Manis")
+        #expect(parsed.items[7].price == 10_000)
+        #expect(parsed.items[9].name == "Donat Coklat")
+        #expect(parsed.items[9].price == 12_000)
+        #expect(parsed.printedSubtotal == 169_000)
+        #expect(parsed.summedSubtotal == 169_000)
+        #expect(parsed.subtotalMismatch == 0)
+    }
+
+    @Test("Split-line items with space-separated quantity and unit price")
+    func splitLineSpacedQtyUnitPrice() {
+        let text = """
+            CAFE KITA
+            Kopi Susu Gula Aren
+            2  18.000  36.000
+            Croissant
+            2 x 20.000  40.000
+            Subtotal 76.000
+            """
+        let parsed = ReceiptParser.parse(text: text)
+        #expect(parsed.items.count == 4)
+        #expect(parsed.items[0].name == "Kopi Susu Gula Aren")
+        #expect(parsed.items[0].price == 18_000)
+        #expect(parsed.items[2].name == "Croissant")
+        #expect(parsed.items[2].price == 20_000)
+        #expect(parsed.subtotalMismatch == 0)
+    }
+
+    @Test("Merchant detection filters out header noise and picks store title")
+    func merchantDetectionWithNoise() {
+        let text = """
+            === STRUK PEMBELIAN ===
+            Selamat Datang di
+            KOPI JANJI JIWA
+            Jl. Sudirman No. 45, Jakarta
+            Tanggal: 20/07/2026 14:30
+            Order #1234  Kasir: Budi
+            ----------------------------
+            Kopi Susu Jiwa      20.000
+            Subtotal            20.000
+            """
+        let parsed = ReceiptParser.parse(text: text)
+        #expect(parsed.merchantName == "KOPI JANJI JIWA")
+        #expect(parsed.items.count == 1)
+        #expect(parsed.items[0].name == "Kopi Susu Jiwa")
+    }
+
+    @Test("Merchant detection prioritizes larger font size (taller box) at top")
+    func merchantDetectionBySize() {
+        let rows: [ReceiptRow] = [
+            .line(RecognizedText(text: "SELAMAT DATANG", box: NormalizedRect(x: 0.2, y: 0.02, width: 0.6, height: 0.015))),
+            .line(RecognizedText(text: "RESTORAN PADANG SEDAP", box: NormalizedRect(x: 0.1, y: 0.05, width: 0.8, height: 0.045))),
+            .line(RecognizedText(text: "Jl. Boulevard Raya Blok A", box: NormalizedRect(x: 0.2, y: 0.11, width: 0.6, height: 0.015))),
+            .line(RecognizedText(text: "Rendang Sapi 30.000", box: NormalizedRect(x: 0.1, y: 0.20, width: 0.8, height: 0.02))),
+            .line(RecognizedText(text: "Subtotal 30.000", box: NormalizedRect(x: 0.1, y: 0.30, width: 0.8, height: 0.02)))
+        ]
+        let receipt = RecognizedReceipt(rows: rows)
+        let parsed = ReceiptParser.parse(receipt)
+        #expect(parsed.merchantName == "RESTORAN PADANG SEDAP")
+    }
+
+    @Test("Cafe Titik Beku receipt: leading quantity, store title, subtotal")
+    func cafeTitikBekuReceipt() {
+        let text = """
+            Cafe TITIK BEKU
+            Jl Harapan Indah Raya BF/20
+            Harapan Indah Bekasi
+            Telp. 08159355593
+
+            No # : 01.2018.04.08.0235
+            Kasir : Administrator
+            Tanggal : 08-04-2018 17:54
+            No Meja : 19
+
+            Dine-In
+            2 FRUIT TEA ICE        30,000
+            1 GELATO MEDIUM        28,000
+            1 SPAGHETTI SALTED     38,000
+            EGG CHKN
+            1 FRENCH FRIES         15,000
+
+            Total Order 5 Menu
+            SUBTOTAL              111,000
+            DISKON                      0
+            TOTAL                 111,000
+
+            TERIMA KASIH
+            ATAS KUNJUNGAN ANDA
+            Review us on
+            ZOMATO & GOOGLE
+            Follow us @CAFE.BEKU
+            """
+        let parsed = ReceiptParser.parse(text: text)
+        #expect(parsed.merchantName == "Cafe TITIK BEKU")
+        // 2 Fruit Tea + 1 Gelato + 1 Spaghetti + 1 French Fries = 5 claimable units
+        #expect(parsed.items.count == 5)
+        #expect(parsed.items[0].name == "FRUIT TEA ICE")
+        #expect(parsed.items[0].price == 15_000)
+        #expect(parsed.items[1].name == "FRUIT TEA ICE")
+        #expect(parsed.items[1].price == 15_000)
+        #expect(parsed.items[2].name == "GELATO MEDIUM")
+        #expect(parsed.items[2].price == 28_000)
+        #expect(parsed.items[3].price == 38_000)
+        #expect(parsed.items[4].name == "FRENCH FRIES")
+        #expect(parsed.items[4].price == 15_000)
+        #expect(parsed.printedSubtotal == 111_000)
+        #expect(parsed.summedSubtotal == 111_000)
+        #expect(parsed.subtotalMismatch == 0)
+    }
+
+    @Test("Various Tax & Service Charge formats: PB1, SC, Pajak Resto, Biaya Layanan")
+    func variedTaxAndServicePatterns() {
+        let text = """
+            BISTRO NUSANTARA
+            Nasi Goreng Wagyu     100.000
+            Sate Ayam Madura       50.000
+            SUBTOTAL              150.000
+            Service Charge 5%       7.500
+            PB1 (10%)              15.750
+            TOTAL                 173.250
+            """
+        let parsed = ReceiptParser.parse(text: text)
+        #expect(parsed.servicePercent == 5)
+        #expect(parsed.taxPercent == 10)
+        #expect(parsed.taxBasis == .subtotalPlusService)
+        #expect(parsed.printedSubtotal == 150_000)
+        #expect(parsed.summedSubtotal == 150_000)
+    }
+
+    @Test("PPN 11% and Biaya Layanan")
+    func ppn11PercentReceipt() {
+        let text = """
+            RESTO MODERN
+            Steak Ribeye          200.000
+            Ice Lemon Tea          20.000
+            Total Sebelum Pajak   220.000
+            Biaya Layanan          11.000
+            PPN 11%                25.410
+            Total                 256.410
+            """
+        let parsed = ReceiptParser.parse(text: text)
+        #expect(parsed.servicePercent == 5) // 11.000 / 220.000 = 5%
+        #expect(parsed.taxPercent == 11)
+        #expect(parsed.taxBasis == .subtotalPlusService) // 11% of (220.000 + 11.000) = 25.410
+        #expect(parsed.printedSubtotal == 220_000)
+    }
 }
 
 

@@ -132,20 +132,32 @@ public struct RecognizedReceipt: Sendable, Hashable, Codable {
         guard !fragments.isEmpty else { return [] }
         // Fragments without geometry can't be grouped; keep them as-is.
         guard fragments.allSatisfy({ $0.box != nil }) else { return fragments }
-        // Top to bottom (y grows downward).
-        let sorted = fragments.sorted { $0.box!.midY < $1.box!.midY }
+        // Top to bottom (y grows downward), then left to right.
+        let sorted = fragments.sorted {
+            if abs($0.box!.midY - $1.box!.midY) < 0.005 {
+                return $0.box!.x < $1.box!.x
+            }
+            return $0.box!.midY < $1.box!.midY
+        }
 
         var lines: [[RecognizedText]] = []
         for fragment in sorted {
+            let fragBox = fragment.box!
             if var current = lines.last,
                let anchor = current.first,
-               abs(fragment.box!.midY - anchor.box!.midY)
-                   < max(anchor.box!.height, fragment.box!.height) * 0.6 {
-                current.append(fragment)
-                lines[lines.count - 1] = current
-            } else {
-                lines.append([fragment])
+               let anchorBox = anchor.box {
+                let yDiff = abs(fragBox.midY - anchorBox.midY)
+                let maxH = max(anchorBox.height, fragBox.height)
+                let overlap = min(anchorBox.maxY, fragBox.maxY) - max(anchorBox.y, fragBox.y)
+                let isSameLine = yDiff < maxH * 0.75 || overlap > min(anchorBox.height, fragBox.height) * 0.35
+                
+                if isSameLine {
+                    current.append(fragment)
+                    lines[lines.count - 1] = current
+                    continue
+                }
             }
+            lines.append([fragment])
         }
         return lines.map { line in
             let ordered = line.sorted { $0.box!.x < $1.box!.x }

@@ -5,7 +5,7 @@ import Foundation
 /// CloudKit Console. One room = one custom zone in the host's private
 /// database; the zone is the unit that gets shared via CKShare.
 public enum RecordSchema {
-    public static let containerIdentifier = "iCloud.com.c4.splitr"
+    public static let containerIdentifier = "iCloud.com.bryan.splitr"
     /// Custom zone name for a room: "room-<uuid>".
     public static func zoneName(roomID: UUID) -> String {
         "room-\(roomID.uuidString)"

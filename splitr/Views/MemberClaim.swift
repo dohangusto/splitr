@@ -65,19 +65,13 @@ struct CheckboxButton: View {
 private struct MenuItemRow: View {
     let item: BillItem
     let room: Room
-    let actingID: UUID
+    let targetMemberID: UUID
     let interactive: Bool
     let onToggle: () -> Void
-    var onForceAssign: ((UUID) -> Void)? = nil
+    var onManageClaimers: (() -> Void)? = nil
 
-    /// The checkbox is self-only: checked means "I'm on this item".
-    private var iAmIn: Bool { item.involves(actingID) }
-
-    /// Exclusive item host assignment — the member can't act on it.
-    /// Shared items stay joinable by any member so multiple users can claim.
-    private var locked: Bool {
-        item.isForceAssigned
-    }
+    /// The checkbox reflects whether the target member is on this item.
+    private var iAmIn: Bool { item.involves(targetMemberID) }
 
     /// Who's on the item — the roster, so sharing is never a blind on/off.
     private var statusText: String? {
@@ -87,14 +81,17 @@ private struct MenuItemRow: View {
         case .claimed(let claims):
             let others = claims
                 .map(\.memberID)
-                .filter { $0 != actingID }
+                .filter { $0 != targetMemberID }
                 .map { room.member(withID: $0)?.displayName ?? "someone" }
-            if others.isEmpty { return "Yours" }
+            let targetName = room.member(withID: targetMemberID)?.displayName ?? "You"
+            if others.isEmpty {
+                return targetMemberID == room.hostMemberID ? "Yours" : "Claimed by \(targetName)"
+            }
             let names = others.joined(separator: ", ")
-            return iAmIn ? "Shared with \(names)" : (item.isSharedClaim ? "Shared: \(names)" : "Claimed by \(names)")
+            return iAmIn ? "Shared with \(names)" : "Shared: \(names)"
         case .forceAssigned(let memberID):
             let name = room.member(withID: memberID)?.displayName ?? "someone"
-            return memberID == actingID ? "Assigned to you by host" : "Assigned to \(name) by host"
+            return memberID == targetMemberID ? "Assigned to \(name)" : "Assigned to \(name)"
         }
     }
 
@@ -106,51 +103,61 @@ private struct MenuItemRow: View {
                     .font(.subheadline)
                 Spacer()
                 CheckboxButton(isChecked: iAmIn, action: onToggle)
-                    .disabled(!interactive || locked)
-                    .opacity(interactive && !locked ? 1 : 0.5)
+                    .disabled(!interactive)
+                    .opacity(interactive ? 1 : 0.5)
             }
 
             //who's in + price
             HStack(alignment: .center) {
-                if let statusText {
-                    HStack(spacing: 6) {
-                        // Overlapping Avatar Group on the left
-                        HStack(spacing: -6) {
-                            ForEach(item.participantIDs, id: \.self) { memberID in
-                                if let member = room.member(withID: memberID) {
-                                    Group {
-                                        if let uiImage = UIImage(named: member.avatarEmoji) {
-                                            Image(uiImage: uiImage)
-                                                .resizable()
-                                                .scaledToFill()
-                                        } else {
-                                            Text(member.avatarEmoji)
-                                                .font(.system(size: 11))
-                                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                                .background(Color(.systemGray6))
+                Button {
+                    onManageClaimers?()
+                } label: {
+                    if let statusText {
+                        HStack(spacing: 6) {
+                            // Overlapping Avatar Group on the left
+                            HStack(spacing: -6) {
+                                ForEach(item.participantIDs, id: \.self) { memberID in
+                                    if let member = room.member(withID: memberID) {
+                                        Group {
+                                            if let uiImage = UIImage(named: member.avatarEmoji) {
+                                                Image(uiImage: uiImage)
+                                                    .resizable()
+                                                    .scaledToFill()
+                                            } else {
+                                                Text(member.avatarEmoji)
+                                                    .font(.system(size: 11))
+                                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                                    .background(Color(.systemGray6))
+                                            }
                                         }
-                                    }
-                                    .frame(width: 20, height: 20)
-                                    .clipShape(Circle())
-                                    .overlay {
-                                        Circle()
-                                            .stroke(Color.white, lineWidth: 1.5)
+                                        .frame(width: 20, height: 20)
+                                        .clipShape(Circle())
+                                        .overlay {
+                                            Circle()
+                                                .stroke(Color.white, lineWidth: 1.5)
+                                        }
                                     }
                                 }
                             }
+
+                            // Status text on the right
+                            Text(statusText)
+                                .font(.caption)
+                                .foregroundColor(iAmIn ? Color("Blue2") : .secondary)
+                                .lineLimit(1)
                         }
-                        
-                        // Status text on the right
-                        Text(statusText)
-                            .font(.caption)
-                            .foregroundColor(iAmIn ? Color("Blue2") : .secondary)
-                            .lineLimit(1)
-                    }
-                } else {
-                    Text("Unclaimed")
-                        .font(.caption)
+                    } else {
+                        HStack(spacing: 4) {
+                            Image(systemName: "person.badge.plus")
+                                .font(.caption2)
+                            Text("Unclaimed · Tap to assign")
+                                .font(.caption)
+                        }
                         .foregroundColor(.secondary)
+                    }
                 }
+                .buttonStyle(.plain)
+
                 Spacer()
                 let splitPrice = item.unitPrice / max(1, item.claimState.claimerIDs.count)
                 Text(splitPrice.rupiah)
@@ -158,25 +165,101 @@ private struct MenuItemRow: View {
             }
         }
         .padding(.vertical, 22)
-        .contextMenu {
-            let actingIsHost = actingID == room.hostMemberID
-            if actingIsHost {
-                Menu("Assign to…") {
-                    ForEach(room.members) { member in
-                        Button {
-                            onForceAssign?(member.id)
-                        } label: {
-                            Label {
-                                Text(member.displayName)
-                            } icon: {
-                                if let uiImage = UIImage(named: member.avatarEmoji) {
-                                    Image(uiImage: uiImage)
-                                } else {
-                                    Text(member.avatarEmoji)
-                                }
+    }
+}
+
+//MARK: Sheet for assigning/sharing an item among room members
+private struct ItemClaimersSheet: View {
+    let item: BillItem
+    let billID: UUID
+    let room: Room
+    let store: any RoomStoring
+    let roomID: UUID
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(item.name)
+                                .font(.headline)
+                            Text(item.unitPrice.rupiah)
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        let count = item.claimState.claimerIDs.count
+                        if count > 0 {
+                            let splitPrice = item.unitPrice / count
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Text("\(splitPrice.rupiah) / person")
+                                    .font(.subheadline.bold())
+                                    .foregroundColor(Color("Blue2"))
+                                Text("\(count) person\(count == 1 ? "" : "s")")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
                             }
                         }
                     }
+                    .padding(.vertical, 4)
+                }
+
+                Section("Select members sharing this item") {
+                    ForEach(room.members) { member in
+                        let isMemberIn = item.involves(member.id)
+                        Button {
+                            store.toggleClaim(itemID: item.id, billID: billID, for: member.id, roomID: roomID)
+                        } label: {
+                            HStack(spacing: 12) {
+                                Group {
+                                    if let uiImage = UIImage(named: member.avatarEmoji) {
+                                        Image(uiImage: uiImage)
+                                            .resizable()
+                                            .scaledToFill()
+                                    } else {
+                                        Text(member.avatarEmoji)
+                                            .font(.system(size: 16))
+                                    }
+                                }
+                                .frame(width: 36, height: 36)
+                                .clipShape(Circle())
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    HStack(spacing: 4) {
+                                        Text(member.displayName)
+                                            .font(.body)
+                                            .foregroundColor(.primary)
+                                        if member.isHost {
+                                            Text("Host")
+                                                .font(.caption2.bold())
+                                                .foregroundColor(.white)
+                                                .padding(.horizontal, 6)
+                                                .padding(.vertical, 2)
+                                                .background(Color("Blue2"))
+                                                .clipShape(Capsule())
+                                        }
+                                    }
+                                }
+
+                                Spacer()
+
+                                CheckboxButton(isChecked: isMemberIn) {
+                                    store.toggleClaim(itemID: item.id, billID: billID, for: member.id, roomID: roomID)
+                                }
+                            }
+                            .padding(.vertical, 4)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .navigationTitle("Assign Item")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
                 }
             }
         }
@@ -195,9 +278,16 @@ struct MemberClaim: View {
     @State private var collapsedBillIDs: Set<UUID> = []
     @State private var navigateToPaymentStatus = false
     @State private var showSuccessAnimation = false
+    @State private var selectedMemberID: UUID?
+    @State private var itemForAssigning: (item: BillItem, billID: UUID)?
+    @State private var showAddMemberSheet = false
 
     private var room: Room? { store.room(withID: roomID) }
     private var actingID: UUID? { store.actingMemberID(in: roomID) }
+    private var actingIsHost: Bool { actingID == room?.hostMemberID }
+    private var effectiveMemberID: UUID {
+        (actingIsHost ? (selectedMemberID ?? actingID) : actingID) ?? UUID()
+    }
 
     var body: some View {
         Group {
@@ -214,9 +304,29 @@ struct MemberClaim: View {
         }
         .fullScreenCover(isPresented: $showSuccessAnimation) {
             SuccessAnimationView(onFinished: {
+                store.markPaid(roomID: roomID)
                 showSuccessAnimation = false
                 dismiss()
             })
+        }
+        .sheet(item: Binding(
+            get: { itemForAssigning.map { IdentifiableItemWrapper(item: $0.item, billID: $0.billID) } },
+            set: { itemForAssigning = $0.map { ($0.item, $0.billID) } }
+        )) { wrapper in
+            if let room {
+                // Find latest item from state
+                let currentItem = room.bills.first(where: { $0.id == wrapper.billID })?.items.first(where: { $0.id == wrapper.item.id }) ?? wrapper.item
+                ItemClaimersSheet(
+                    item: currentItem,
+                    billID: wrapper.billID,
+                    room: room,
+                    store: store,
+                    roomID: roomID
+                )
+            }
+        }
+        .sheet(isPresented: $showAddMemberSheet) {
+            JoinMemberView(store: store, roomID: roomID)
         }
     }
 
@@ -224,16 +334,16 @@ struct MemberClaim: View {
     private func content(_ room: Room, actingID: UUID) -> some View {
         switch room.state {
         case .open:
-            waitingState
+            waitingState(room, actingID: actingID)
         case .claiming, .settling, .closed:
             VStack(spacing: 0) {
                 ZStack(alignment: .top) {
-                    billList(room, actingID: actingID, interactive: room.state == .claiming || room.state == .settling)
-                    
+                    billList(room, actingID: actingID, interactive: room.state != .closed)
+
                     VStack(spacing: 0) {
                         ZStack(alignment: .trailing) {
                             NavigationHeader(title: "Claim Item")
-                            
+
                             if room.state == .settling || room.state == .closed {
                                 Button {
                                     navigateToPaymentStatus = true
@@ -252,7 +362,12 @@ struct MemberClaim: View {
                         .padding(.top, 10)
                         .padding(.bottom, 8)
                         .background(Color(red: 0.90, green: 0.92, blue: 0.99).ignoresSafeArea(edges: .top))
-                        
+
+                        if actingIsHost && room.state != .closed {
+                            memberSelectorBar(room)
+                                .background(Color(red: 0.90, green: 0.92, blue: 0.99))
+                        }
+
                         LinearGradient(
                             gradient: Gradient(colors: [
                                 Color(red: 0.90, green: 0.92, blue: 0.99),
@@ -261,31 +376,298 @@ struct MemberClaim: View {
                             startPoint: .top,
                             endPoint: .bottom
                         )
-                        .frame(height: 24)
+                        .frame(height: 20)
                     }
                 }
-                
+
                 footer(room, actingID: actingID)
             }
         }
     }
 
-    // MARK: - Waiting (room still .open)
+    // MARK: - Member Selector Bar (Host Manual Claiming)
 
-    private var waitingState: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "hourglass")
-                .font(.system(size: 44))
-                .foregroundStyle(.secondary)
-            Text("The host is still preparing the bill")
-                .font(.headline)
-            Text("You'll claim your items here once claiming opens.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+    @ViewBuilder
+    private func memberSelectorBar(_ room: Room) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(room.members) { member in
+                    let isSelected = member.id == effectiveMemberID
+                    Button {
+                        selectedMemberID = member.id
+                    } label: {
+                        HStack(spacing: 6) {
+                            Group {
+                                if let uiImage = UIImage(named: member.avatarEmoji) {
+                                    Image(uiImage: uiImage)
+                                        .resizable()
+                                        .scaledToFill()
+                                } else {
+                                    Text(member.avatarEmoji)
+                                        .font(.system(size: 12))
+                                }
+                            }
+                            .frame(width: 22, height: 22)
+                            .clipShape(Circle())
+
+                            Text(member.id == room.hostMemberID ? "\(member.displayName) (You)" : member.displayName)
+                                .font(.system(size: 13, weight: isSelected ? .bold : .medium))
+                                .foregroundColor(isSelected ? .white : .primary)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(
+                            isSelected ?
+                            AnyShapeStyle(
+                                LinearGradient(
+                                    colors: [Color("Blue1"), Color("Blue2")],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            ) :
+                            AnyShapeStyle(Color.white)
+                        )
+                        .clipShape(Capsule())
+                        .shadow(color: .black.opacity(isSelected ? 0.15 : 0.04), radius: 4, y: 2)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Button {
+                    showAddMemberSheet = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 12, weight: .bold))
+                        Text("Add Member")
+                            .font(.system(size: 13, weight: .medium))
+                    }
+                    .foregroundColor(Color("Blue2"))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(Color.white)
+                    .clipShape(Capsule())
+                    .shadow(color: .black.opacity(0.04), radius: 4, y: 2)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 4)
         }
-        .multilineTextAlignment(.center)
-        .padding(32)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: - Waiting Room (room still .open)
+
+    private func waitingState(_ room: Room, actingID: UUID) -> some View {
+        let me = room.member(withID: actingID)
+        let host = room.member(withID: room.hostMemberID)
+        
+        return VStack(spacing: 0) {
+            // Header
+            HStack {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.primary)
+                        .frame(width: 40, height: 40)
+                        .background(Color.white)
+                        .clipShape(Circle())
+                        .shadow(color: .black.opacity(0.06), radius: 6, y: 2)
+                }
+                Spacer()
+                Text("Waiting Room")
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                Spacer()
+                Color.clear.frame(width: 40, height: 40)
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 12)
+            .padding(.bottom, 16)
+            
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 24) {
+                    // Room Info Card
+                    VStack(spacing: 12) {
+                        Text(room.name)
+                            .font(.title2.bold())
+                            .foregroundColor(.primary)
+                            .multilineTextAlignment(.center)
+                        
+                        if let host {
+                            HStack(spacing: 6) {
+                                Group {
+                                    if let uiImage = UIImage(named: host.avatarEmoji) {
+                                        Image(uiImage: uiImage)
+                                            .resizable()
+                                            .scaledToFill()
+                                    } else {
+                                        Text(host.avatarEmoji)
+                                            .font(.system(size: 14))
+                                    }
+                                }
+                                .frame(width: 24, height: 24)
+                                .clipShape(Circle())
+                                
+                                Text("Hosted by \(host.displayName)")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color(red: 0.94, green: 0.95, blue: 0.99))
+                            .clipShape(Capsule())
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 20)
+                    .background(Color.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    .shadow(color: .black.opacity(0.04), radius: 10, y: 3)
+                    
+                    // Animated Waiting Card
+                    VStack(spacing: 18) {
+                        ZStack {
+                            Circle()
+                                .fill(Color("Blue1").opacity(0.12))
+                                .frame(width: 90, height: 90)
+                            
+                            Circle()
+                                .fill(Color("Blue1").opacity(0.25))
+                                .frame(width: 68, height: 68)
+                            
+                            Image(systemName: "hourglass")
+                                .font(.system(size: 30, weight: .bold))
+                                .foregroundColor(Color("Blue2"))
+                        }
+                        .padding(.top, 8)
+                        
+                        VStack(spacing: 8) {
+                            Text("Waiting for Host")
+                                .font(.title3.bold())
+                                .foregroundColor(.primary)
+                            
+                            Text("The host is preparing the bill. Once the host starts claiming, the bill items will appear here automatically.")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 8)
+                        }
+                        
+                        Divider()
+                            .padding(.vertical, 4)
+                        
+                        // Your Identity
+                        if let me {
+                            HStack(spacing: 12) {
+                                Group {
+                                    if let uiImage = UIImage(named: me.avatarEmoji) {
+                                        Image(uiImage: uiImage)
+                                            .resizable()
+                                            .scaledToFill()
+                                    } else {
+                                        Text(me.avatarEmoji)
+                                            .font(.system(size: 18))
+                                    }
+                                }
+                                .frame(width: 36, height: 36)
+                                .clipShape(Circle())
+                                
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("You joined as")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                    Text(me.displayName)
+                                        .font(.headline)
+                                        .foregroundColor(.primary)
+                                }
+                                Spacer()
+                                Label("Joined", systemImage: "checkmark.circle.fill")
+                                    .font(.caption.bold())
+                                    .foregroundColor(.green)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 5)
+                                    .background(Color.green.opacity(0.12))
+                                    .clipShape(Capsule())
+                            }
+                            .padding(12)
+                            .background(Color(red: 0.96, green: 0.97, blue: 1.0))
+                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(20)
+                    .background(Color.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    .shadow(color: .black.opacity(0.04), radius: 10, y: 3)
+                    
+                    // Members in Room Card
+                    VStack(alignment: .leading, spacing: 14) {
+                        HStack {
+                            Text("Members in Room")
+                                .font(.headline)
+                                .foregroundColor(.primary)
+                            Spacer()
+                            Text("\(room.members.count)")
+                                .font(.subheadline.bold())
+                                .foregroundColor(Color("Blue2"))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 4)
+                                .background(Color("Blue1").opacity(0.15))
+                                .clipShape(Capsule())
+                        }
+                        
+                        ForEach(room.members) { member in
+                            HStack(spacing: 12) {
+                                Group {
+                                    if let uiImage = UIImage(named: member.avatarEmoji) {
+                                        Image(uiImage: uiImage)
+                                            .resizable()
+                                            .scaledToFill()
+                                    } else {
+                                        Text(member.avatarEmoji)
+                                            .font(.system(size: 16))
+                                    }
+                                }
+                                .frame(width: 32, height: 32)
+                                .clipShape(Circle())
+                                
+                                Text(member.id == actingID ? "\(member.displayName) (You)" : member.displayName)
+                                    .font(.system(size: 14, weight: member.id == actingID ? .bold : .medium))
+                                    .foregroundColor(.primary)
+                                
+                                Spacer()
+                                
+                                if member.isHost {
+                                    Text("Host")
+                                        .font(.caption.bold())
+                                        .foregroundColor(.orange)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 3)
+                                        .background(Color.orange.opacity(0.12))
+                                        .clipShape(Capsule())
+                                } else {
+                                    Text("Member")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            .padding(.vertical, 4)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(20)
+                    .background(Color.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    .shadow(color: .black.opacity(0.04), radius: 10, y: 3)
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 32)
+            }
+        }
+        .background(Color(red: 0.90, green: 0.92, blue: 0.99).ignoresSafeArea())
     }
 
     // MARK: - Bills
@@ -334,11 +716,13 @@ struct MemberClaim: View {
                     MenuItemRow(
                         item: item,
                         room: room,
-                        actingID: actingID,
+                        targetMemberID: effectiveMemberID,
                         interactive: interactive,
-                        onToggle: { toggle(item: item, billID: bill.id, actingID: actingID) },
-                        onForceAssign: { memberID in
-                            store.forceAssign(itemID: item.id, billID: bill.id, to: memberID, roomID: roomID)
+                        onToggle: {
+                            store.toggleClaim(itemID: item.id, billID: bill.id, for: effectiveMemberID, roomID: roomID)
+                        },
+                        onManageClaimers: {
+                            itemForAssigning = (item, bill.id)
                         }
                     )
                     .padding(.horizontal)
@@ -346,12 +730,16 @@ struct MemberClaim: View {
                         .padding(.horizontal)
                 }
 
-                // MARK: summary rows — Core's per-bill amounts, never
-                // recomputed here. (No discount row: not a Core concept yet.)
+                // MARK: summary rows — Core's per-bill amounts
                 VStack(spacing: 12) {
-                    summaryRow(label: "Pajak", value: bill.taxTotal)
-                    summaryRow(label: "Servis", value: bill.serviceChargeTotal)
-                    summaryRow(label: "Subtotal", value: bill.grandTotal, weight: .semibold)
+                    summaryRow(label: "Items Subtotal", value: bill.subtotal)
+                    if bill.serviceChargeTotal > 0 {
+                        summaryRow(label: "Service", value: bill.serviceChargeTotal)
+                    }
+                    if bill.taxTotal > 0 {
+                        summaryRow(label: "Tax (PB1)", value: bill.taxTotal)
+                    }
+                    summaryRow(label: "Grand Total", value: bill.grandTotal, weight: .semibold)
                 }
                 .padding()
             }
@@ -361,57 +749,66 @@ struct MemberClaim: View {
         .shadow(color: .black.opacity(0.05), radius: 8, y: 2)
     }
 
-    /// Self-only toggle: I'm in / I'm out. Never assigns anyone else.
-    private func toggle(item: BillItem, billID: UUID, actingID: UUID) {
-        switch item.claimState {
-        case .unclaimed:
-            store.claim(itemID: item.id, billID: billID, roomID: roomID)
-        case .claimed(let claims):
-            if claims.contains(where: { $0.memberID == actingID }) {
-                store.releaseClaim(itemID: item.id, billID: billID, roomID: roomID)
-            } else {
-                store.joinClaim(itemID: item.id, billID: billID, roomID: roomID)
-            }
-        case .forceAssigned:
-            break // host's call; the row is disabled anyway
-        }
-    }
-
     // MARK: - Bottom Sticky Footer
 
-    /// Claiming: running total only — claims commit per toggle, so there is
-    /// no confirm button. Settling: the Core-computed total owed and the
-    /// member's one remaining action, "I've Paid". Closed: read-only total.
+    /// Claiming: running total including proportional tax & service.
+    /// Settling: the Core-computed total owed and the member's "I've Paid" action.
     @ViewBuilder
     private func footer(_ room: Room, actingID: UUID) -> some View {
         let me = room.member(withID: actingID)
+        let targetID = effectiveMemberID
+        let targetMember = room.member(withID: targetID)
+        let estimate = room.estimatedClaimSettlement(for: targetID)
         let owed = (try? SettlementCalculator.settle(room: room))?
-            .settlement(for: actingID)?.totalOwed
+            .settlement(for: targetID)?.totalOwed
 
         HStack(spacing: 16) {
             VStack(alignment: .leading, spacing: 2) {
                 switch room.state {
                 case .claiming:
-                    Text("Your \(room.claims(for: actingID).count) item total · before tax & service")
-                        .font(.caption)
+                    if estimate.total > 0 {
+                        let memberLabel = (targetID == actingID) ? "Your" : "\(targetMember?.displayName ?? "Member")'s"
+                        HStack(spacing: 4) {
+                            Text("\(memberLabel) items: \(estimate.subtotal.rupiah)")
+                            if estimate.serviceShare > 0 {
+                                Text("· Svc: \(estimate.serviceShare.rupiah)")
+                            }
+                            if estimate.taxShare > 0 {
+                                Text("· Tax: \(estimate.taxShare.rupiah)")
+                            }
+                        }
+                        .font(.caption2)
                         .foregroundColor(.secondary)
-                    Text(room.claimedSubtotal(for: actingID).rupiah)
-                        .font(.title3.bold())
-                        .foregroundColor(.primary)
+
+                        Text(estimate.total.rupiah)
+                            .font(.title3.bold())
+                            .foregroundColor(.primary)
+                    } else {
+                        let memberLabel = (targetID == actingID) ? "your items" : "items for \(targetMember?.displayName ?? "member")"
+                        Text("Select \(memberLabel)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text(0.rupiah)
+                            .font(.title3.bold())
+                            .foregroundColor(.primary)
+                    }
                 default:
-                    Text("You owe the host")
+                    Text(targetID == actingID ? "You owe the host" : "\(targetMember?.displayName ?? "Member") owes")
                         .font(.caption)
                         .foregroundColor(.secondary)
-                    Text((owed ?? room.claimedSubtotal(for: actingID)).rupiah)
+                    Text((owed ?? estimate.total).rupiah)
                         .font(.title3.bold())
                         .foregroundColor(.primary)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            
-            if room.state == .claiming {
+
+            if room.state == .claiming || room.state == .open {
                 if actingID == room.hostMemberID {
                     Button(action: {
+                        if room.state == .open {
+                            store.advance(roomID: roomID)
+                        }
                         store.advance(roomID: roomID)
                         navigateToPaymentStatus = true
                     }) {
@@ -432,7 +829,6 @@ struct MemberClaim: View {
                 } else if let me {
                     if me.paymentStatus == .none {
                         Button(action: {
-                            store.markPaid(roomID: roomID)
                             showSuccessAnimation = true
                         }) {
                             Text("I've Paid")
@@ -451,11 +847,11 @@ struct MemberClaim: View {
                         }
                     } else {
                         Text(me.paymentStatus == .hostConfirmed ? "Settled" : "Paid")
-                            .font(.subheadline.bold())
-                            .foregroundColor(.green)
+                            .font(.headline)
+                            .foregroundColor(.white)
                             .frame(width: 140)
                             .padding(.vertical, 14)
-                            .background(Color.green.opacity(0.1))
+                            .background(Color.green)
                             .clipShape(Capsule())
                     }
                 }
@@ -463,7 +859,6 @@ struct MemberClaim: View {
                 switch me.paymentStatus {
                 case .none:
                     Button(action: {
-                        store.markPaid(roomID: roomID)
                         showSuccessAnimation = true
                     }) {
                         Text("I've Paid")
@@ -501,7 +896,7 @@ struct MemberClaim: View {
         }
         .padding(.horizontal, 24)
         .padding(.top, 16)
-        .padding(.bottom, 12) // Penyeimbang padding agar menyatu dengan safe area bottom
+        .padding(.bottom, 12)
         .background(
             Color.white
                 .clipShape(RoundedCorner(radius: 24, corners: [.topLeft, .topRight]))
@@ -518,7 +913,7 @@ struct MemberClaim: View {
             .padding(.vertical, 16)
     }
 
-    // helper buat baris Pajak/Servis/Subtotal
+    // helper for Tax/Service/Subtotal rows
     @ViewBuilder
     private func summaryRow(label: String, value: Int, weight: Font.Weight = .regular) -> some View {
         HStack {
@@ -530,6 +925,12 @@ struct MemberClaim: View {
         .font(weight != .regular ? .headline : .subheadline)
         .fontWeight(weight)
     }
+}
+
+private struct IdentifiableItemWrapper: Identifiable {
+    var id: UUID { item.id }
+    let item: BillItem
+    let billID: UUID
 }
 
 // Shape kustom untuk membulatkan sudut tertentu (hanya atas kiri & atas kanan)
